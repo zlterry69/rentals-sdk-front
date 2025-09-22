@@ -128,7 +128,7 @@ const Dashboard: React.FC = () => {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-white">
-              ¡Bienvenido de vuelta, {user?.name || 'Usuario'}!
+              ¡Bienvenido de vuelta, {user?.email || 'Usuario'}!
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
               Aquí tienes un resumen de tu sistema de alquileres

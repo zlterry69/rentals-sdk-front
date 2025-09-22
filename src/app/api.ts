@@ -2,8 +2,8 @@ import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import toast from 'react-hot-toast';
 
 // API configuration
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
-const PAYMENTS_API_BASE_URL = import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:8001';
+const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
+const PAYMENTS_API_BASE_URL = (import.meta as any).env?.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:8001';
 
 // Create axios instances
 export const apiClient: AxiosInstance = axios.create({
@@ -79,7 +79,7 @@ const handleResponseError = (error: AxiosError) => {
               }
             });
           } else {
-            toast.error(details);
+            toast.error(String(details));
           }
         } else {
           toast.error('Error de validación.');
