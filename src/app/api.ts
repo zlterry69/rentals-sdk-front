@@ -1,0 +1,164 @@
+import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
+import toast from 'react-hot-toast';
+
+// API configuration
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
+const PAYMENTS_API_BASE_URL = import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:8001';
+
+// Create axios instances
+export const apiClient: AxiosInstance = axios.create({
+  baseURL: API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+export const paymentsApiClient: AxiosInstance = axios.create({
+  baseURL: PAYMENTS_API_BASE_URL,
+  timeout: 10000,
+  headers: {
+    'Content-Type': 'application/json',
+  },
+});
+
+// Request interceptor to add auth token
+apiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+paymentsApiClient.interceptors.request.use(
+  (config) => {
+    const token = localStorage.getItem('auth_token');
+    if (token) {
+      config.headers.Authorization = `Bearer ${token}`;
+    }
+    return config;
+  },
+  (error) => {
+    return Promise.reject(error);
+  }
+);
+
+// Response interceptor for error handling
+const handleResponseError = (error: AxiosError) => {
+  if (error.response) {
+    const { status, data } = error.response;
+    
+    switch (status) {
+      case 401:
+        // Unauthorized - redirect to login
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+        toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+        break;
+      case 403:
+        toast.error('No tienes permisos para realizar esta acción.');
+        break;
+      case 404:
+        toast.error('Recurso no encontrado.');
+        break;
+      case 422:
+        // Validation error
+        if (data && typeof data === 'object' && 'detail' in data) {
+          const details = data.detail;
+          if (Array.isArray(details)) {
+            details.forEach((detail: any) => {
+              if (detail.loc && detail.msg) {
+                toast.error(`${detail.loc.join('.')}: ${detail.msg}`);
+              }
+            });
+          } else {
+            toast.error(details);
+          }
+        } else {
+          toast.error('Error de validación.');
+        }
+        break;
+      case 500:
+        toast.error('Error interno del servidor.');
+        break;
+      default:
+        toast.error('Ha ocurrido un error inesperado.');
+    }
+  } else if (error.request) {
+    // Network error
+    toast.error('Error de conexión. Verifica tu conexión a internet.');
+  } else {
+    // Other error
+    toast.error('Error inesperado.');
+  }
+  
+  return Promise.reject(error);
+};
+
+apiClient.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  handleResponseError
+);
+
+paymentsApiClient.interceptors.response.use(
+  (response: AxiosResponse) => response,
+  handleResponseError
+);
+
+// API endpoints
+export const API_ENDPOINTS = {
+  // Auth
+  LOGIN: '/auth/login',
+  REGISTER: '/auth/register',
+  REFRESH: '/auth/refresh',
+  LOGOUT: '/auth/logout',
+  
+  // Users
+  PROFILE: '/users/profile',
+  UPDATE_PROFILE: '/users/profile',
+  
+  // Debtors
+  DEBTORS: '/debtors',
+  DEBTOR: (id: string) => `/debtors/${id}`,
+  
+  // Units
+  UNITS: '/units',
+  UNIT: (id: string) => `/units/${id}`,
+  
+  // Leases
+  LEASES: '/leases',
+  LEASE: (id: string) => `/leases/${id}`,
+  
+  // Payments
+  PAYMENTS: '/payments',
+  PAYMENT: (id: string) => `/payments/${id}`,
+  PAYMENT_CONFIRM: (id: string) => `/payments/${id}/confirm`,
+  PAYMENT_RECEIPT: (id: string) => `/payments/${id}/generate-receipt`,
+  
+  // Catalogs
+  CURRENCIES: '/currencies',
+  PROCESS_STATUS: '/process-status',
+  BANKS: '/banks',
+  
+  // Reports
+  REPORTS_PAYMENTS: '/reports/payments',
+  
+  // Health
+  HEALTH: '/health',
+} as const;
+
+// Payments API endpoints
+export const PAYMENTS_API_ENDPOINTS = {
+  CHECKOUT: '/checkout',
+  WEBHOOK: (provider: string) => `/webhook/${provider}`,
+  HEALTH: '/health',
+} as const;
+
+export default apiClient;
