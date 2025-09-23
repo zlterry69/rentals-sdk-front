@@ -214,7 +214,7 @@ const Home: React.FC = () => {
             {/* Featured Property 2 */}
             <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
               <img
-                src="https://images.unsplash.com/photo-1570129477492-450057b837a3?w=800"
+                src="https://images.unsplash.com/photo-1652064132636-d0bea258cc85?q=80&w=1548&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
                 alt="Villa con Vista al Mar"
                 className="w-full h-64 object-cover"
               />
