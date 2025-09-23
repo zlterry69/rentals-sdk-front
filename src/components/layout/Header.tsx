@@ -91,6 +91,14 @@ export const Header: React.FC<HeaderProps> = ({ onMobileMenuClick }) => {
         </div>
 
         <div className="flex flex-1 items-center justify-end gap-x-4 lg:gap-x-6">
+          {/* Contact Link */}
+          <Link
+            to="/contact"
+            className="text-sm font-medium text-gray-700 hover:text-primary-600 px-3 py-2 rounded-md"
+          >
+            Contacto
+          </Link>
+
           {/* Notifications */}
           <button
             type="button"

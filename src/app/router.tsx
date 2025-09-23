@@ -12,18 +12,13 @@ import { AuthLayout } from '@/components/layout/AuthLayout';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
 // Lazy loaded pages
-const Dashboard = lazy(() => import('@/pages/Dashboard'));
 const Login = lazy(() => import('@/pages/auth/Login'));
 const Register = lazy(() => import('@/pages/auth/Register'));
-const DebtorsList = lazy(() => import('@/pages/debtors/DebtorsList'));
-const DebtorDetail = lazy(() => import('@/pages/debtors/DebtorDetail'));
-const PaymentsList = lazy(() => import('@/pages/payments/PaymentsList'));
-const PaymentNew = lazy(() => import('@/pages/payments/PaymentNew'));
-const PaymentDetail = lazy(() => import('@/pages/payments/PaymentDetail'));
-const UnitsList = lazy(() => import('@/pages/units/UnitsList'));
-const LeasesList = lazy(() => import('@/pages/leases/LeasesList'));
-const Reports = lazy(() => import('@/pages/Reports'));
 const Profile = lazy(() => import('@/pages/Profile'));
+const Contact = lazy(() => import('@/pages/Contact'));
+const Home = lazy(() => import('@/pages/Home'));
+const PropertiesList = lazy(() => import('@/pages/PropertiesList'));
+const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // Query client
@@ -69,6 +64,10 @@ export const router = createBrowserRouter([
         element: <PublicRoute />,
         children: [
           {
+            index: true,
+            element: <Home />,
+          },
+          {
             path: '/login',
             element: (
               <AuthLayout>
@@ -84,6 +83,18 @@ export const router = createBrowserRouter([
               </AuthLayout>
             ),
           },
+          {
+            path: '/contact',
+            element: <Contact />,
+          },
+          {
+            path: '/properties',
+            element: <PropertiesList />,
+          },
+          {
+            path: '/properties/:id',
+            element: <PropertyDetail />,
+          },
         ],
       },
       
@@ -97,38 +108,7 @@ export const router = createBrowserRouter([
             children: [
               {
                 index: true,
-                element: <Navigate to="/dashboard" replace />,
-              },
-              {
-                path: 'dashboard',
-                element: <Dashboard />,
-              },
-              {
-                path: 'debtors',
-                children: [
-                  { index: true, element: <DebtorsList /> },
-                  { path: ':id', element: <DebtorDetail /> },
-                ],
-              },
-              {
-                path: 'payments',
-                children: [
-                  { index: true, element: <PaymentsList /> },
-                  { path: 'new', element: <PaymentNew /> },
-                  { path: ':id', element: <PaymentDetail /> },
-                ],
-              },
-              {
-                path: 'units',
-                element: <UnitsList />,
-              },
-              {
-                path: 'leases',
-                element: <LeasesList />,
-              },
-              {
-                path: 'reports',
-                element: <Reports />,
+                element: <Navigate to="/properties" replace />,
               },
               {
                 path: 'profile',
