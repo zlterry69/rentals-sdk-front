@@ -1,3 +1,28 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* Tema Sistema - Solo afecta al sidebar (navegación izquierda) */
+/* Usamos una clase más específica para el sidebar */
+.theme-system:not(.dark) .sidebar .bg-white,
+.theme-system:not(.dark) .sidebar .bg-gray-900 {
+  background-color: #eff6ff !important; /* Fondo azul más claro para el sidebar */
+}
+
+/* Texto más oscuro en el sidebar para tema sistema */
+.theme-system:not(.dark) .sidebar .text-white {
+  color: #1f2937 !important; /* Texto gris muy oscuro */
+}
+
+.theme-system:not(.dark) .sidebar .text-gray-300 {
+  color: #374151 !important; /* Texto gris oscuro */
+}
+
+.theme-system:not(.dark) .sidebar .text-gray-400 {
+  color: #4b5563 !important; /* Texto gris medio */
+}
+
+/* Hover effects para tema sistema en sidebar */
+.theme-system:not(.dark) .sidebar .hover\:bg-gray-50:hover {
+  background-color: #dbeafe !important; /* Azul un poco más intenso para hover */
+}

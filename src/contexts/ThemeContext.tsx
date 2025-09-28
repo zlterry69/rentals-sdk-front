@@ -19,43 +19,26 @@ export const ThemeProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     return savedTheme || 'system';
   });
 
-  const [resolvedTheme, setResolvedTheme] = useState<'light' | 'dark'>('light');
-
-  // Resolve theme based on system preference
-  useEffect(() => {
-    const resolveTheme = () => {
-      if (theme === 'system') {
-        const systemPrefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-        setResolvedTheme(systemPrefersDark ? 'dark' : 'light');
-      } else {
-        setResolvedTheme(theme);
-      }
-    };
-
-    resolveTheme();
-
-    // Listen for system theme changes
-    const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-    const handleChange = () => {
-      if (theme === 'system') {
-        resolveTheme();
-      }
-    };
-
-    mediaQuery.addEventListener('change', handleChange);
-    return () => mediaQuery.removeEventListener('change', handleChange);
-  }, [theme]);
+  // Calculate resolved theme directly
+  const resolvedTheme = theme === 'system' ? 'light' : theme;
 
   // Apply theme to document
   useEffect(() => {
     const root = document.documentElement;
     
+    // Remove all theme classes
+    root.classList.remove('dark', 'theme-system');
+    
+    // Add the appropriate theme class
     if (resolvedTheme === 'dark') {
       root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
     }
-  }, [resolvedTheme]);
+    
+    // Add system theme class ONLY for sidebar color override
+    if (theme === 'system') {
+      root.classList.add('theme-system');
+    }
+  }, [resolvedTheme, theme]);
 
   // Save theme to localStorage
   useEffect(() => {

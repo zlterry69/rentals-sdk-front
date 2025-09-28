@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   MagnifyingGlassIcon,
@@ -10,7 +10,28 @@ import {
   StarIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
-import { allProperties } from '@/data/allProperties';
+import { api } from '@/app/api';
+import PublicHeader from '@/components/layout/PublicHeader';
+import toast from 'react-hot-toast';
+
+interface Property {
+  id: string;
+  public_id: string;
+  title: string;
+  description: string;
+  address: string;
+  district: string;
+  monthly_rent: number;
+  deposit: number;
+  bedrooms: number;
+  bathrooms: number;
+  area_sqm: number;
+  amenities: string[];
+  images: string[];
+  rating: number;
+  total_reviews: number;
+  status: string;
+}
 
 const PropertiesList: React.FC = () => {
   const [searchFilters, setSearchFilters] = useState({
@@ -20,6 +41,8 @@ const PropertiesList: React.FC = () => {
     guests: 1
   });
   const [showFilters, setShowFilters] = useState(false);
+  const [properties, setProperties] = useState<Property[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState<string[]>([]);
 
   const toggleFavorite = (propertyId: string) => {
@@ -30,6 +53,25 @@ const PropertiesList: React.FC = () => {
     );
   };
 
+  // Fetch properties from backend
+  useEffect(() => {
+    const fetchProperties = async () => {
+      try {
+        setIsLoading(true);
+        const response = await api.get('/units/available');
+        setProperties(response.data || []);
+      } catch (error) {
+        console.error('Error fetching properties:', error);
+        toast.error('Error al cargar propiedades');
+        setProperties([]);
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchProperties();
+  }, []);
+
   const handleSearch = () => {
     // Implement search logic
     console.log('Searching with filters:', searchFilters);
@@ -37,24 +79,8 @@ const PropertiesList: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <div className="bg-white shadow-sm border-b">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex items-center justify-between py-4">
-            <Link to="/" className="flex items-center">
-              <div className="text-2xl font-bold text-blue-600">HogarPerú</div>
-            </Link>
-            <div className="flex items-center space-x-4">
-              <Link to="/contact" className="text-gray-700 hover:text-blue-600">
-                Contacto
-              </Link>
-              <Link to="/login" className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
-                Iniciar Sesión
-              </Link>
-            </div>
-          </div>
-        </div>
-      </div>
+      {/* Header dinámico */}
+      <PublicHeader />
 
       {/* Search Bar */}
       <div className="bg-white border-b">
@@ -152,7 +178,7 @@ const PropertiesList: React.FC = () => {
               <span>Filtros</span>
             </button>
             <div className="text-sm text-gray-600">
-              {allProperties.length} propiedades encontradas
+              {properties.length} propiedades encontradas
             </div>
           </div>
         </div>
@@ -160,21 +186,26 @@ const PropertiesList: React.FC = () => {
 
       {/* Properties Grid */}
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {allProperties.map((property) => (
+        {isLoading ? (
+          <div className="flex items-center justify-center min-h-[400px]">
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+          </div>
+        ) : properties.length > 0 ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {properties.map((property) => (
             <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
               {/* Property Image */}
               <div className="relative">
                 <img
-                  src={property.images[0]}
+                  src={property.images && property.images.length > 0 ? property.images[0] : '/image_default_properties.jpg'}
                   alt={property.title}
                   className="w-full h-64 object-cover"
                 />
                 <button
-                  onClick={() => toggleFavorite(property.id)}
+                  onClick={() => toggleFavorite(property.public_id)}
                   className="absolute top-3 right-3 p-2 rounded-full bg-white/80 hover:bg-white transition-colors"
                 >
-                  {favorites.includes(property.id) ? (
+                  {favorites.includes(property.public_id) ? (
                     <HeartSolidIcon className="h-5 w-5 text-red-500" />
                   ) : (
                     <HeartIcon className="h-5 w-5 text-gray-600" />
@@ -190,12 +221,13 @@ const PropertiesList: React.FC = () => {
                   </h3>
                   <div className="flex items-center space-x-1">
                     <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">{property.rating}</span>
+                    <span className="text-sm text-gray-600">{property.rating || 0}</span>
+                    <span className="text-sm text-gray-500">({property.total_reviews || 0})</span>
                   </div>
                 </div>
 
                 <p className="text-sm text-gray-600 mb-2">
-                  {property.location.city}, {property.location.country}
+                  {property.address}
                 </p>
 
                 <p className="text-sm text-gray-500 mb-3 line-clamp-2">
@@ -204,13 +236,13 @@ const PropertiesList: React.FC = () => {
 
                 <div className="flex items-center justify-between">
                   <div className="text-sm text-gray-600">
-                    {property.bedrooms} habitaciones • {property.bathrooms} baños
+                    {property.bedrooms} hab • {property.bathrooms} baños • {property.area_sqm} m²
                   </div>
                   <div className="text-right">
                     <div className="text-lg font-semibold text-gray-900">
-                      ${property.price_per_night}
+                      S/ {property.monthly_rent.toLocaleString()}
                     </div>
-                    <div className="text-sm text-gray-500">por noche</div>
+                    <div className="text-sm text-gray-500">por mes</div>
                   </div>
                 </div>
 
@@ -224,6 +256,19 @@ const PropertiesList: React.FC = () => {
             </div>
           ))}
         </div>
+        ) : (
+          <div className="text-center py-16">
+            <div className="mx-auto h-24 w-24 text-gray-300">
+              <svg fill="currentColor" viewBox="0 0 24 24">
+                <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+              </svg>
+            </div>
+            <h3 className="mt-4 text-lg font-medium text-gray-900">No hay propiedades disponibles</h3>
+            <p className="mt-2 text-sm text-gray-500 max-w-sm mx-auto">
+              Actualmente no hay propiedades disponibles para alquilar. ¡Vuelve pronto para ver nuevas opciones!
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

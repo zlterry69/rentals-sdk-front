@@ -58,9 +58,10 @@ const handleResponseError = (error: AxiosError) => {
       case 401:
         // Unauthorized - redirect to login
         localStorage.removeItem('auth_token');
-        localStorage.removeItem('user');
-        window.location.href = '/login';
-        toast.error('Sesión expirada. Por favor, inicia sesión nuevamente.');
+        localStorage.removeItem('user_data');
+        // Use window.location.replace to avoid back button issues
+        window.location.replace('/login');
+        toast.error('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
         break;
       case 403:
         toast.error('No tienes permisos para realizar esta acción.');
@@ -117,12 +118,13 @@ export const API_ENDPOINTS = {
   // Auth
   LOGIN: '/auth/login',
   REGISTER: '/auth/register',
-  REFRESH: '/auth/refresh',
-  LOGOUT: '/auth/logout',
+  PROFILE: '/auth/me',
+  UPDATE_PROFILE: '/auth/profile',
+  CHANGE_PASSWORD: '/auth/change-password',
   
-  // Users
-  PROFILE: '/users/profile',
-  UPDATE_PROFILE: '/users/profile',
+  // Admin endpoints
+  CREATE_ADMIN: '/auth/admin/create',
+  DELETE_USER: (userId: string) => `/auth/admin/${userId}`,
   
   // Debtors
   DEBTORS: '/debtors',
@@ -160,5 +162,8 @@ export const PAYMENTS_API_ENDPOINTS = {
   WEBHOOK: (provider: string) => `/webhook/${provider}`,
   HEALTH: '/health',
 } as const;
+
+// Export for compatibility
+export const api = apiClient;
 
 export default apiClient;

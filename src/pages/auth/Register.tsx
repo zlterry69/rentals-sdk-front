@@ -4,13 +4,12 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
 import { useAuth } from '@/contexts/AuthContext';
-import { AuthLayout } from '@/components/layout/AuthLayout';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 
 const registerSchema = z.object({
-  firstName: z.string().min(2, 'El nombre debe tener al menos 2 caracteres'),
-  lastName: z.string().min(2, 'El apellido debe tener al menos 2 caracteres'),
+  name: z.string().min(2, 'El nombre completo debe tener al menos 2 caracteres'),
   email: z.string().email('Email inválido'),
+  phone: z.string().optional(),
   password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
   confirmPassword: z.string(),
   acceptTerms: z.boolean().refine(val => val === true, 'Debes aceptar los términos y condiciones'),
@@ -33,62 +32,63 @@ const Register: React.FC = () => {
 
   const onSubmit = async (data: RegisterFormData) => {
     await registerUser({
-      firstName: data.firstName,
-      lastName: data.lastName,
+      name: data.name,
       email: data.email,
+      phone: data.phone,
       password: data.password,
     });
   };
 
   return (
-    <AuthLayout>
-      <div className="min-h-screen flex items-center justify-center bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
-        <div className="max-w-md w-full space-y-8">
-          <div>
-            <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-              Crear cuenta
-            </h2>
-            <p className="mt-2 text-center text-sm text-gray-600">
-              O{' '}
-              <Link
-                to="/login"
-                className="font-medium text-primary-600 hover:text-primary-500"
-              >
-                inicia sesión con tu cuenta existente
-              </Link>
-            </p>
-          </div>
+    <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      <div className="bg-white/80 backdrop-blur-md py-8 px-6 shadow-xl rounded-2xl border border-white/20">
+        <div className="text-center mb-6">
+          <h2 className="text-2xl font-bold text-gray-900">
+            Únete a HogarPeru
+          </h2>
+          <p className="mt-1 text-sm text-gray-600">
+            Crea tu cuenta y comienza a explorar
+          </p>
+          <p className="mt-2 text-sm text-gray-600">
+            ¿Ya tienes cuenta?{' '}
+            <Link
+              to="/login"
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Inicia sesión aquí
+            </Link>
+          </p>
+        </div>
           <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label htmlFor="firstName" className="block text-sm font-medium text-gray-700">
-                    Nombre
-                  </label>
-                  <input
-                    {...register('firstName')}
-                    type="text"
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Tu nombre"
-                  />
-                  {errors.firstName && (
-                    <p className="mt-1 text-sm text-red-600">{errors.firstName.message}</p>
-                  )}
-                </div>
-                <div>
-                  <label htmlFor="lastName" className="block text-sm font-medium text-gray-700">
-                    Apellido
-                  </label>
-                  <input
-                    {...register('lastName')}
-                    type="text"
-                    className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
-                    placeholder="Tu apellido"
-                  />
-                  {errors.lastName && (
-                    <p className="mt-1 text-sm text-red-600">{errors.lastName.message}</p>
-                  )}
-                </div>
+              <div>
+                <label htmlFor="name" className="block text-sm font-medium text-gray-700">
+                  Nombre Completo
+                </label>
+                <input
+                  {...register('name')}
+                  type="text"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="Tu nombre completo"
+                />
+                {errors.name && (
+                  <p className="mt-1 text-sm text-red-600">{errors.name.message}</p>
+                )}
+              </div>
+              
+              <div>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700">
+                  Teléfono (opcional)
+                </label>
+                <input
+                  {...register('phone')}
+                  type="tel"
+                  className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  placeholder="+51 999 999 999"
+                />
+                {errors.phone && (
+                  <p className="mt-1 text-sm text-red-600">{errors.phone.message}</p>
+                )}
               </div>
 
               <div>
@@ -174,9 +174,8 @@ const Register: React.FC = () => {
               </button>
             </div>
           </form>
-        </div>
       </div>
-    </AuthLayout>
+    </div>
   );
 };
 

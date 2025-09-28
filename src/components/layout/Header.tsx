@@ -4,6 +4,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Menu, Transition } from '@headlessui/react';
 import { Bars3Icon, BellIcon, XMarkIcon } from '@heroicons/react/24/outline';
 import { classNames } from '@/utils/classNames';
+import { NotificationDropdown } from '@/components/notifications/NotificationDropdown';
 
 interface HeaderProps {
   onMobileMenuClick: () => void;
@@ -100,13 +101,7 @@ export const Header: React.FC<HeaderProps> = ({ onMobileMenuClick }) => {
           </Link>
 
           {/* Notifications */}
-          <button
-            type="button"
-            className="-m-2.5 p-2.5 text-gray-400 hover:text-gray-500"
-          >
-            <span className="sr-only">Ver notificaciones</span>
-            <BellIcon className="h-6 w-6" aria-hidden="true" />
-          </button>
+          <NotificationDropdown />
 
           {/* Separator */}
           <div className="hidden lg:block lg:h-6 lg:w-px lg:bg-gray-200" aria-hidden="true" />
@@ -117,12 +112,12 @@ export const Header: React.FC<HeaderProps> = ({ onMobileMenuClick }) => {
               <span className="sr-only">Abrir menú de usuario</span>
               <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
                 <span className="text-sm font-medium text-gray-700">
-                  {user?.firstName?.[0]}{user?.lastName?.[0]}
+                  {user?.full_name?.split(' ').map(name => name[0]).join('').slice(0, 2) || user?.email.slice(0, 2).toUpperCase()}
                 </span>
               </div>
               <span className="hidden lg:flex lg:items-center">
                 <span className="ml-4 text-sm font-semibold leading-6 text-gray-900" aria-hidden="true">
-                  {user?.firstName} {user?.lastName}
+                  {user?.full_name || user?.email}
                 </span>
                 <svg className="ml-2 h-5 w-5 text-gray-400" viewBox="0 0 20 20" fill="currentColor" aria-hidden="true">
                   <path fillRule="evenodd" d="M5.23 7.21a.75.75 0 011.06.02L10 11.168l3.71-3.938a.75.75 0 111.08 1.04l-4.25 4.5a.75.75 0 01-1.08 0l-4.25-4.5a.75.75 0 01.02-1.06z" clipRule="evenodd" />

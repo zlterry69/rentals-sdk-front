@@ -3,17 +3,22 @@ import React, { createContext, useContext, useReducer, useEffect } from 'react';
 // Types
 export interface User {
   id: string;
-  firstName: string;
-  lastName: string;
+  public_id: string;
   email: string;
+  username?: string;
+  full_name?: string;
   phone?: string;
-  company?: string;
+  role: string;
+  created_by?: string;
+  is_active: boolean;
+  is_verified: boolean;
+  profile_image?: string;
+  date_of_birth?: string;
   address?: string;
-  timezone?: string;
-  language?: string;
-  role?: string;
-  createdAt: string;
-  updatedAt: string;
+  emergency_contact?: string;
+  last_login?: string;
+  created_at: string;
+  updated_at: string;
 }
 
 export interface AuthState {
@@ -30,21 +35,19 @@ export interface LoginCredentials {
 }
 
 export interface RegisterCredentials {
-  firstName: string;
-  lastName: string;
   email: string;
   password: string;
+  name: string;
+  phone?: string;
 }
 
 export interface UpdateProfileData {
-  firstName: string;
-  lastName: string;
-  email: string;
+  full_name?: string;
   phone?: string;
-  company?: string;
   address?: string;
-  timezone?: string;
-  language?: string;
+  date_of_birth?: string;
+  emergency_contact?: string;
+  profile_image?: string;
 }
 
 // Action types
@@ -117,7 +120,7 @@ interface AuthContextType extends AuthState {
   login: (credentials: LoginCredentials) => Promise<void>;
   register: (credentials: RegisterCredentials) => Promise<void>;
   logout: () => void;
-  updateProfile: (data: UpdateProfileData) => Promise<void>;
+  updateProfile: (data: UpdateProfileData | FormData) => Promise<void>;
   clearError: () => void;
 }
 
@@ -135,12 +138,31 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         const userData = localStorage.getItem('user_data');
         
         if (token && userData) {
-          const user = JSON.parse(userData);
-          dispatch({ type: 'AUTH_SUCCESS', payload: user });
+          // Verify token with backend
+          const response = await fetch('http://localhost:8000/auth/me', {
+            method: 'GET',
+            headers: {
+              'Authorization': `Bearer ${token}`,
+              'Content-Type': 'application/json',
+            },
+          });
+
+          if (response.ok) {
+            const user = await response.json();
+            dispatch({ type: 'AUTH_SUCCESS', payload: user });
+          } else {
+            // Token is invalid or expired
+            localStorage.removeItem('auth_token');
+            localStorage.removeItem('user_data');
+            dispatch({ type: 'AUTH_LOGOUT' });
+          }
         } else {
           dispatch({ type: 'AUTH_LOGOUT' });
         }
       } catch (error) {
+        console.error('Auth check failed:', error);
+        localStorage.removeItem('auth_token');
+        localStorage.removeItem('user_data');
         dispatch({ type: 'AUTH_LOGOUT' });
       }
     };
@@ -152,36 +174,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'AUTH_START' });
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      // Demo mode - accept any email/password
-      if (credentials.email && credentials.password) {
-        const user: User = {
-          id: '1',
-          firstName: 'Demo',
-          lastName: 'User',
+      // Call real backend API
+      const response = await fetch('http://localhost:8000/auth/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
           email: credentials.email,
-          phone: '+1 234 567 8900',
-          company: 'Demo Company',
-          address: '123 Demo Street, Demo City',
-          timezone: 'America/Lima',
-          language: 'es',
-          role: 'admin',
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
-        };
-        
-        // Store in localStorage
-        localStorage.setItem('auth_token', 'demo_token_123');
-        localStorage.setItem('user_data', JSON.stringify(user));
-        
-        dispatch({ type: 'AUTH_SUCCESS', payload: user });
-      } else {
-        throw new Error('Email y contraseña son requeridos');
+          password: credentials.password,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error de autenticación');
       }
+
+      const data = await response.json();
+      const { access_token, user } = data;
+      
+      // Store in localStorage
+      localStorage.setItem('auth_token', access_token);
+      localStorage.setItem('user_data', JSON.stringify(user));
+      
+      dispatch({ type: 'AUTH_SUCCESS', payload: user });
     } catch (error) {
       dispatch({ type: 'AUTH_FAILURE', payload: error instanceof Error ? error.message : 'Error de autenticación' });
+      throw error;
     }
   };
 
@@ -189,23 +209,30 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'AUTH_START' });
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      const user: User = {
-        id: Date.now().toString(),
-        firstName: credentials.firstName,
-        lastName: credentials.lastName,
-        email: credentials.email,
-        timezone: 'America/Lima',
-        language: 'es',
-        role: 'user',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-      };
+      // Call real backend API
+      const response = await fetch('http://localhost:8000/auth/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email: credentials.email,
+          password: credentials.password,
+          name: credentials.name,
+          phone: credentials.phone,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error de registro');
+      }
+
+      const data = await response.json();
+      const { access_token, user } = data;
       
       // Store in localStorage
-      localStorage.setItem('auth_token', 'demo_token_123');
+      localStorage.setItem('auth_token', access_token);
       localStorage.setItem('user_data', JSON.stringify(user));
       
       dispatch({ type: 'AUTH_SUCCESS', payload: user });
@@ -220,20 +247,55 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     dispatch({ type: 'AUTH_LOGOUT' });
   };
 
-  const updateProfile = async (data: UpdateProfileData) => {
+  const updateProfile = async (data: UpdateProfileData | FormData) => {
     dispatch({ type: 'AUTH_START' });
     
     try {
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
-      
-      if (state.user) {
-        const updatedUser = { ...state.user, ...data, updatedAt: new Date().toISOString() };
-        localStorage.setItem('user_data', JSON.stringify(updatedUser));
-        dispatch({ type: 'AUTH_UPDATE_USER', payload: data });
+      const token = localStorage.getItem('auth_token');
+      if (!token) {
+        throw new Error('No hay token de autenticación');
       }
+
+      let requestOptions: RequestInit;
+
+      if (data instanceof FormData) {
+        // Handle FormData (with files)
+        requestOptions = {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+          },
+          body: data,
+        };
+      } else {
+        // Handle JSON data (text only)
+        requestOptions = {
+          method: 'PUT',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body: JSON.stringify(data),
+        };
+      }
+
+      // Call real backend API
+      const response = await fetch('http://localhost:8000/auth/profile', requestOptions);
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || 'Error al actualizar perfil');
+      }
+
+      const updatedUser = await response.json();
+      
+      // Update localStorage
+      localStorage.setItem('user_data', JSON.stringify(updatedUser));
+      dispatch({ type: 'AUTH_UPDATE_USER', payload: updatedUser });
+      
     } catch (error) {
       dispatch({ type: 'AUTH_FAILURE', payload: error instanceof Error ? error.message : 'Error al actualizar perfil' });
+      throw error;
     }
   };
 

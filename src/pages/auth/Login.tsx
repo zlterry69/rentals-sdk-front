@@ -54,23 +54,9 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 py-12 px-4 sm:px-6 lg:px-8">
-      <div className="max-w-md w-full space-y-8">
-        {/* Logo and title */}
-        <div className="text-center">
-          <div className="mx-auto h-16 w-16 bg-blue-600 rounded-2xl flex items-center justify-center shadow-lg">
-            <span className="text-white font-bold text-2xl">R</span>
-          </div>
-          <h2 className="mt-6 text-3xl font-bold text-gray-900">
-            Inicia sesión
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Sistema de gestión de alquileres
-          </p>
-        </div>
-
-        {/* Login form */}
-        <div className="bg-white py-8 px-6 shadow-xl rounded-2xl">
+    <div className="sm:mx-auto sm:w-full sm:max-w-md">
+      {/* Login form */}
+      <div className="bg-white/80 backdrop-blur-md py-8 px-6 shadow-xl rounded-2xl border border-white/20">
           <form className="space-y-6" onSubmit={handleSubmit(onSubmit)}>
             <div className="space-y-4">
               {/* Email field */}
@@ -174,10 +160,11 @@ const Login: React.FC = () => {
               )}
             </button>
 
-            {/* Demo mode info */}
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-              <p className="text-sm text-blue-800">
-                <strong>Modo Demo:</strong> Puedes usar cualquier email y contraseña para probar el sistema.
+            {/* Welcome message */}
+            <div className="bg-gradient-to-r from-blue-50 to-cyan-50 border border-blue-100 rounded-lg p-4">
+              <p className="text-sm text-gray-700 text-center">
+                <span className="font-medium text-blue-800">¡Bienvenido a HogarPeru!</span><br />
+                Encuentra tu hogar ideal o comparte el tuyo con otros viajeros.
               </p>
             </div>
 
@@ -195,7 +182,6 @@ const Login: React.FC = () => {
             </div>
           </form>
         </div>
-      </div>
     </div>
   );
 };

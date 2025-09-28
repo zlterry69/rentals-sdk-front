@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   BuildingOfficeIcon, 
@@ -11,8 +11,54 @@ import {
   ArrowRightIcon,
   StarIcon
 } from '@heroicons/react/24/outline';
+import PublicHeader from '@/components/layout/PublicHeader';
+import { useAuth } from '@/contexts/AuthContext';
+import { api } from '@/app/api';
+
+interface Property {
+  id: string;
+  public_id: string;
+  title: string;
+  description: string;
+  address: string;
+  district: string;
+  monthly_rent: number;
+  bedrooms: number;
+  bathrooms: number;
+  area_sqm: number;
+  property_type: string;
+  amenities: string[];
+  images: string[];
+  rating: number;
+  total_reviews: number;
+  status: string;
+}
 
 const Home: React.FC = () => {
+  const { isAuthenticated, user } = useAuth();
+  const [featuredProperties, setFeaturedProperties] = useState<Property[]>([]);
+  const [isLoadingProperties, setIsLoadingProperties] = useState(true);
+
+  // Fetch featured properties (top rated)
+  useEffect(() => {
+    const fetchFeaturedProperties = async () => {
+      try {
+        setIsLoadingProperties(true);
+        const response = await api.get('/units/featured');
+        const properties = response.data || [];
+        
+        setFeaturedProperties(properties);
+      } catch (error) {
+        console.error('Error fetching featured properties:', error);
+        setFeaturedProperties([]);
+      } finally {
+        setIsLoadingProperties(false);
+      }
+    };
+
+    fetchFeaturedProperties();
+  }, []);
+  
   const features = [
     {
       name: 'Propiedades Únicas',
@@ -48,30 +94,7 @@ const Home: React.FC = () => {
   return (
     <div className="min-h-screen bg-white">
       {/* Header */}
-      <header className="bg-white shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center py-6">
-            <div className="flex items-center">
-              <BuildingOfficeIcon className="h-8 w-8 text-blue-600" />
-                      <span className="ml-2 text-xl font-bold text-gray-900">HogarPerú</span>
-            </div>
-            <div className="flex items-center space-x-4">
-              <Link
-                to="/contact"
-                className="text-gray-700 hover:text-blue-600 px-3 py-2 rounded-md text-sm font-medium"
-              >
-                Contacto
-              </Link>
-              <Link
-                to="/login"
-                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
-              >
-                Iniciar Sesión
-              </Link>
-            </div>
-          </div>
-        </div>
-      </header>
+      <PublicHeader />
 
       {/* Hero Section */}
       <section className="bg-gradient-to-r from-blue-600 to-blue-800 text-white">
@@ -183,88 +206,63 @@ const Home: React.FC = () => {
             </p>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {/* Featured Property 1 */}
-            <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <img
-                src="https://images.unsplash.com/photo-1564013799919-ab600027ffc6?w=800"
-                alt="Casa Moderna en Miraflores"
-                className="w-full h-64 object-cover"
-              />
-              <div className="p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Casa Moderna en Miraflores
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Hermosa casa moderna con vista al mar, perfecta para vacaciones familiares.
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1">
-                    <StarIcon className="h-5 w-5 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">4.8 (24 reseñas)</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold text-gray-900">$120</div>
-                    <div className="text-sm text-gray-500">por noche</div>
-                  </div>
-                </div>
-              </div>
+          {isLoadingProperties ? (
+            <div className="flex items-center justify-center min-h-[400px]">
+              <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
             </div>
-
-            {/* Featured Property 2 */}
-            <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <img
-                src="https://images.unsplash.com/photo-1652064132636-d0bea258cc85?q=80&w=1548&auto=format&fit=crop&ixlib=rb-4.1.0&ixid=M3wxMjA3fDB8MHxwaG90by1wYWdlfHx8fGVufDB8fHx8fA%3D%3D"
-                alt="Villa con Vista al Mar"
-                className="w-full h-64 object-cover"
-              />
-              <div className="p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Villa con Vista al Mar
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Espectacular villa frente al mar, ideal para escapadas de fin de semana.
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1">
-                    <StarIcon className="h-5 w-5 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">4.8 (60 reseñas)</span>
+          ) : featuredProperties.length > 0 ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {featuredProperties.map((property) => (
+                <Link 
+                  key={property.public_id} 
+                  to={`/properties/${property.public_id}`}
+                  className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow block"
+                >
+                  <img
+                    src={property.images && property.images.length > 0 ? property.images[0] : '/image_default_properties.jpg'}
+                    alt={property.title}
+                    className="w-full h-64 object-cover"
+                  />
+                  <div className="p-6">
+                    <h3 className="text-xl font-semibold text-gray-900 mb-2">
+                      {property.title}
+                    </h3>
+                    <p className="text-gray-600 mb-4 line-clamp-2">
+                      {property.description}
+                    </p>
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center space-x-1">
+                        {property.rating && property.rating > 0 ? (
+                          <>
+                            <StarIcon className="h-5 w-5 text-yellow-400 fill-current" />
+                            <span className="text-sm text-gray-600">
+                              {property.rating.toFixed(1)} ({property.total_reviews || 0} reseñas)
+                            </span>
+                          </>
+                        ) : (
+                          <span className="text-sm text-gray-500">Sin reseñas aún</span>
+                        )}
+                      </div>
+                      <div className="text-right">
+                        <div className="text-lg font-semibold text-gray-900">
+                          S/ {Math.round(property.monthly_rent / 30)}
+                        </div>
+                        <div className="text-sm text-gray-500">por noche</div>
+                      </div>
+                    </div>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold text-gray-900">$250</div>
-                    <div className="text-sm text-gray-500">por noche</div>
-                  </div>
-                </div>
-              </div>
+                </Link>
+              ))}
             </div>
-
-            {/* Featured Property 3 */}
-            <div className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
-              <img
-                src="https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=800"
-                alt="Penthouse en La Molina"
-                className="w-full h-64 object-cover"
-              />
-              <div className="p-6">
-                <h3 className="text-xl font-semibold text-gray-900 mb-2">
-                  Penthouse en La Molina
-                </h3>
-                <p className="text-gray-600 mb-4">
-                  Lujoso penthouse con vista panorámica de la ciudad, perfecto para eventos especiales.
-                </p>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center space-x-1">
-                    <StarIcon className="h-5 w-5 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">4.9 (42 reseñas)</span>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-lg font-semibold text-gray-900">$300</div>
-                    <div className="text-sm text-gray-500">por noche</div>
-                  </div>
-                </div>
-              </div>
+          ) : (
+            <div className="text-center py-12">
+              <BuildingOfficeIcon className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">No hay propiedades destacadas</h3>
+              <p className="mt-1 text-sm text-gray-500">
+                Pronto tendremos propiedades increíbles para ti.
+              </p>
             </div>
-          </div>
+          )}
 
           <div className="text-center mt-12">
             <Link
@@ -388,8 +386,18 @@ const Home: React.FC = () => {
               <h3 className="text-lg font-semibold mb-4">Enlaces Rápidos</h3>
               <ul className="space-y-2">
                 <li><Link to="/contact" className="text-gray-400 hover:text-white">Contacto</Link></li>
-                <li><Link to="/login" className="text-gray-400 hover:text-white">Iniciar Sesión</Link></li>
-                <li><Link to="/register" className="text-gray-400 hover:text-white">Registrarse</Link></li>
+                {isAuthenticated && user ? (
+                  <>
+                    <li><Link to="/dashboard" className="text-gray-400 hover:text-white">Mi Dashboard</Link></li>
+                    <li><Link to="/profile" className="text-gray-400 hover:text-white">Mi Perfil</Link></li>
+                    <li><Link to="/units" className="text-gray-400 hover:text-white">Mis Propiedades</Link></li>
+                  </>
+                ) : (
+                  <>
+                    <li><Link to="/login" className="text-gray-400 hover:text-white">Iniciar Sesión</Link></li>
+                    <li><Link to="/register" className="text-gray-400 hover:text-white">Registrarse</Link></li>
+                  </>
+                )}
               </ul>
             </div>
             <div>

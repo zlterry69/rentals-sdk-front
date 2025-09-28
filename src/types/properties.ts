@@ -5,15 +5,8 @@ export interface Property {
   description: string;
   price_per_night: number;
   currency: string;
-  location: {
-    address: string;
-    city: string;
-    country: string;
-    coordinates: {
-      lat: number;
-      lng: number;
-    };
-  };
+  address: string;
+  district: string;
   images: string[];
   amenities: string[];
   property_type: 'apartment' | 'house' | 'villa' | 'condo' | 'studio';
@@ -33,6 +26,8 @@ export interface Property {
   is_available: boolean;
   created_at: string;
   updated_at: string;
+  latitude?: number;
+  longitude?: number;
 }
 
 export interface Booking {

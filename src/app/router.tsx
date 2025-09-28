@@ -17,8 +17,20 @@ const Register = lazy(() => import('@/pages/auth/Register'));
 const Profile = lazy(() => import('@/pages/Profile'));
 const Contact = lazy(() => import('@/pages/Contact'));
 const Home = lazy(() => import('@/pages/Home'));
+const Dashboard = lazy(() => import('@/pages/Dashboard'));
+const Activity = lazy(() => import('@/pages/Activity'));
+const ExploreRentals = lazy(() => import('@/pages/ExploreRentals'));
+const Bookings = lazy(() => import('@/pages/Bookings'));
+const Debtors = lazy(() => import('@/pages/Debtors'));
+const Payments = lazy(() => import('@/pages/Payments'));
+const Units = lazy(() => import('@/pages/Units'));
+const Leases = lazy(() => import('@/pages/Leases'));
+const Reports = lazy(() => import('@/pages/Reports'));
+const Users = lazy(() => import('@/pages/Users'));
 const PropertiesList = lazy(() => import('@/pages/PropertiesList'));
 const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
+const PaymentSuccess = lazy(() => import('@/pages/PaymentSuccess'));
+const PaymentFailed = lazy(() => import('@/pages/PaymentFailed'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // Query client
@@ -95,6 +107,18 @@ export const router = createBrowserRouter([
             path: '/properties/:id',
             element: <PropertyDetail />,
           },
+          {
+            path: '/payment/success',
+            element: <PaymentSuccess />,
+          },
+          {
+            path: '/payment/failed',
+            element: <PaymentFailed />,
+          },
+          {
+            path: '/payment/cancelled',
+            element: <PaymentFailed />,
+          },
         ],
       },
       
@@ -108,11 +132,51 @@ export const router = createBrowserRouter([
             children: [
               {
                 index: true,
-                element: <Navigate to="/properties" replace />,
+                element: <Navigate to="/dashboard" replace />,
               },
+              {
+                path: 'dashboard',
+                element: <Dashboard />, // Dashboard real para usuarios logueados
+              },
+              {
+                path: 'activity',
+                element: <Activity />, // Página de actividad completa
+              },
+        {
+          path: 'explore',
+          element: <ExploreRentals />,
+        },
+        {
+          path: 'bookings',
+          element: <Bookings />,
+        },
               {
                 path: 'profile',
                 element: <Profile />,
+              },
+              {
+                path: 'debtors',
+                element: <Debtors />,
+              },
+              {
+                path: 'payments',
+                element: <Payments />,
+              },
+              {
+                path: 'units',
+                element: <Units />,
+              },
+              {
+                path: 'leases',
+                element: <Leases />,
+              },
+              {
+                path: 'reports',
+                element: <Reports />,
+              },
+              {
+                path: 'users',
+                element: <Users />,
               },
             ],
           },
