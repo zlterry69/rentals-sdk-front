@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { XMarkIcon, TrashIcon, PencilIcon, PlusIcon, CheckIcon, StarIcon } from '@heroicons/react/24/outline';
 
 interface PhotoManagementModalProps {
@@ -29,8 +29,35 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
   const [selectedImages, setSelectedImages] = useState<Set<number>>(new Set());
   const [isDragging, setIsDragging] = useState<number | null>(null);
   const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const imagesPerPage = 8;
+
+  // Reset page when modal opens
+  useEffect(() => {
+    if (isOpen) {
+      setCurrentPage(1);
+    }
+  }, [isOpen]);
+
+  // Reset page when images change (e.g., after reordering)
+  useEffect(() => {
+    if (isOpen && currentPage > 1) {
+      const newTotalPages = Math.ceil((images.length + 1) / imagesPerPage);
+      if (currentPage > newTotalPages) {
+        setCurrentPage(newTotalPages);
+      }
+    }
+  }, [images.length, isOpen, currentPage, imagesPerPage]);
 
   if (!isOpen) return null;
+
+  // Pagination logic
+  const totalPages = Math.ceil((images.length + 1) / imagesPerPage); // +1 for add button
+  const startIndex = (currentPage - 1) * imagesPerPage;
+  const endIndex = startIndex + imagesPerPage;
+  const currentImages = images.slice(startIndex, endIndex);
+  const hasAddButton = images.length < 20; // Max 20 images
+  const showAddButtonOnThisPage = hasAddButton && currentPage === totalPages;
 
   const handleImageSelect = (index: number) => {
     setSelectedImages(prev => {
@@ -103,7 +130,7 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg w-full max-w-6xl max-h-[90vh] flex flex-col">
+      <div className="bg-white rounded-lg w-full max-w-7xl max-h-[95vh] flex flex-col">
         {/* Header */}
         <div className="flex items-center justify-between p-4 border-b">
           <h3 className="text-xl font-semibold">{title}</h3>
@@ -137,31 +164,33 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
         {/* Images Grid */}
         <div className="flex-1 overflow-y-auto p-4">
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
-            {images.map((image, index) => (
+            {currentImages.map((image, index) => {
+              const actualIndex = startIndex + index;
+              return (
               <div
-                key={index}
+                key={actualIndex}
                 className={`relative group cursor-pointer rounded-lg overflow-hidden border-2 transition-all ${
-                  selectedImages.has(index)
+                  selectedImages.has(actualIndex)
                     ? 'border-blue-500 ring-2 ring-blue-200'
                     : 'border-gray-200 hover:border-gray-300'
-                } ${isDragging === index ? 'opacity-50' : ''} ${
-                  dragOverIndex === index ? 'border-green-500 ring-2 ring-green-200' : ''
-                } ${index === coverImageIndex ? 'ring-4 ring-yellow-400 border-yellow-500' : ''}`}
+                } ${isDragging === actualIndex ? 'opacity-50' : ''} ${
+                  dragOverIndex === actualIndex ? 'border-green-500 ring-2 ring-green-200' : ''
+                } ${actualIndex === coverImageIndex ? 'ring-4 ring-yellow-400 border-yellow-500' : ''}`}
                 draggable
-                onDragStart={(e) => handleDragStart(e, index)}
-                onDragOver={(e) => handleDragOver(e, index)}
+                onDragStart={(e) => handleDragStart(e, actualIndex)}
+                onDragOver={(e) => handleDragOver(e, actualIndex)}
                 onDragLeave={handleDragLeave}
-                onDrop={(e) => handleDrop(e, index)}
-                onClick={() => handleImageSelect(index)}
+                onDrop={(e) => handleDrop(e, actualIndex)}
+                onClick={() => handleImageSelect(actualIndex)}
               >
                 <img
                   src={image}
-                  alt={`Foto ${index + 1}`}
+                  alt={`Foto ${actualIndex + 1}`}
                   className="w-full h-32 object-cover"
                 />
                 
                 {/* Selection indicator */}
-                {selectedImages.has(index) && (
+                {selectedImages.has(actualIndex) && (
                   <div className="absolute top-2 left-2 bg-blue-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
                     <CheckIcon className="h-4 w-4" />
                   </div>
@@ -169,11 +198,11 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
 
                 {/* Image number */}
                 <div className="absolute top-2 right-2 bg-black bg-opacity-50 text-white text-xs px-2 py-1 rounded">
-                  {index + 1}
+                  {actualIndex + 1}
                 </div>
 
                 {/* Cover image indicator */}
-                {index === coverImageIndex && (
+                {actualIndex === coverImageIndex && (
                   <div className="absolute top-2 left-2 bg-yellow-500 text-white rounded-full w-6 h-6 flex items-center justify-center">
                     <StarIcon className="h-4 w-4" />
                   </div>
@@ -185,7 +214,7 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        handleSetCoverImage(index);
+                        handleSetCoverImage(actualIndex);
                       }}
                       className="bg-yellow-600 hover:bg-yellow-700 text-white p-2 rounded-full transition-colors"
                       title="Establecer como portada"
@@ -195,7 +224,7 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
                     <button
                       onClick={(e) => {
                         e.stopPropagation();
-                        onImageDelete(index);
+                        onImageDelete(actualIndex);
                       }}
                       className="bg-red-600 hover:bg-red-700 text-white p-2 rounded-full transition-colors"
                       title="Eliminar esta foto"
@@ -208,16 +237,17 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => handleFileUpload(e, index)}
+                        onChange={(e) => handleFileUpload(e, actualIndex)}
                       />
                     </label>
                   </div>
                 </div>
               </div>
-            ))}
+              );
+            })}
 
-            {/* Add new photo slots */}
-            {Array.from({ length: Math.max(0, 8 - images.length) }, (_, index) => {
+            {/* Add new photo slots - only show on last page */}
+            {showAddButtonOnThisPage && Array.from({ length: Math.min(imagesPerPage - currentImages.length, 20 - images.length) }, (_, index) => {
               const slotIndex = images.length + index;
               return (
                 <div
@@ -242,6 +272,33 @@ export const PhotoManagementModal: React.FC<PhotoManagementModalProps> = ({
             })}
           </div>
         </div>
+
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="p-4 border-t bg-gray-50">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-gray-600">
+                Página {currentPage} de {totalPages}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                  disabled={currentPage === 1}
+                  className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Anterior
+                </button>
+                <button
+                  onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                  disabled={currentPage === totalPages}
+                  className="px-3 py-1 text-sm bg-gray-200 text-gray-700 rounded hover:bg-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  Siguiente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Footer */}
         <div className="p-4 border-t bg-gray-50">

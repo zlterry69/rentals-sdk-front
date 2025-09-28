@@ -502,7 +502,26 @@ const PropertyDetail: React.FC = () => {
 
   // Handle setting cover image
   const handleSetCoverImage = (index: number) => {
-    setCoverImageIndex(index);
+    if (!property?.images) return;
+    
+    // Reorganize images: move selected image to position 0
+    const newImages = [...property.images];
+    const selectedImage = newImages[index];
+    
+    // Remove the selected image from its current position
+    newImages.splice(index, 1);
+    
+    // Add it to the beginning (position 0)
+    newImages.unshift(selectedImage);
+    
+    // Update the property with reorganized images
+    setProperty(prev => prev ? {
+      ...prev,
+      images: newImages
+    } : null);
+    
+    // Update cover image index to 0 (first position)
+    setCoverImageIndex(0);
     setHasChanges(true);
   };
 

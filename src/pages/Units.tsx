@@ -27,7 +27,7 @@ interface Unit {
   property_type: 'apartment' | 'house' | 'studio' | 'room';
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  area_sqm: number;
   monthly_rent: number;
   status: 'available' | 'occupied' | 'maintenance';
   tenant_name?: string;
@@ -376,7 +376,7 @@ const Units: React.FC = () => {
 
               <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
                 <span>{getPropertyTypeText(unit.property_type)}</span>
-                <span>{unit.bedrooms} hab • {unit.bathrooms} baños • {unit.area}m²</span>
+                <span>{unit.bedrooms} hab • {unit.bathrooms} baños • {unit.area_sqm}m²</span>
               </div>
 
               {unit.tenant_name && (

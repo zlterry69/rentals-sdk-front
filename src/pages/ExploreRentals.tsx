@@ -22,7 +22,7 @@ interface Property {
   property_type: string;
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  area_sqm: number;
   monthly_rent: number;
   deposit?: number;
   amenities?: string[];
@@ -252,7 +252,7 @@ const ExploreRentals: React.FC = () => {
                 </div>
 
                 <div className="flex items-center justify-between text-sm text-gray-500 mb-3">
-                  <span>{property.bedrooms} hab • {property.bathrooms} baños • {property.area}m²</span>
+                  <span>{property.bedrooms} hab • {property.bathrooms} baños • {property.area_sqm}m²</span>
                 </div>
 
                 <p className="text-sm text-gray-600 mb-3 line-clamp-2">

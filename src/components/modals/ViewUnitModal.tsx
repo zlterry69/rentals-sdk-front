@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import Modal from '@/components/ui/Modal';
 import { 
   HomeModernIcon,
@@ -11,7 +11,10 @@ import {
   XCircleIcon,
   WrenchScrewdriverIcon,
   PhotoIcon,
-  BuildingOfficeIcon
+  BuildingOfficeIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  XMarkIcon
 } from '@heroicons/react/24/outline';
 
 // Interface
@@ -24,7 +27,7 @@ interface Unit {
   property_type: string;
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  area_sqm: number;
   monthly_rent: number;
   status: 'available' | 'occupied' | 'maintenance';
   tenant_name?: string;
@@ -44,6 +47,9 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
   onClose,
   unit
 }) => {
+  const [currentImageIndex, setCurrentImageIndex] = useState(0);
+  const [isImageViewerOpen, setIsImageViewerOpen] = useState(false);
+
   if (!unit) return null;
 
   const getStatusInfo = (status: string) => {
@@ -95,7 +101,25 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
     }).format(amount);
   };
 
+  const openImageViewer = (index: number) => {
+    setCurrentImageIndex(index);
+    setIsImageViewerOpen(true);
+  };
+
+  const nextImage = () => {
+    setCurrentImageIndex((prev) => 
+      prev === unit.images.length - 1 ? 0 : prev + 1
+    );
+  };
+
+  const prevImage = () => {
+    setCurrentImageIndex((prev) => 
+      prev === 0 ? unit.images.length - 1 : prev - 1
+    );
+  };
+
   return (
+    <>
     <Modal
       isOpen={isOpen}
       onClose={onClose}
@@ -167,7 +191,7 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
               
               <div className="flex items-center justify-between">
                 <span className="text-sm font-medium text-gray-500 dark:text-gray-400">Área</span>
-                <span className="text-sm text-gray-900 dark:text-white">{unit.area} m²</span>
+                <span className="text-sm text-gray-900 dark:text-white">{unit.area_sqm} m²</span>
               </div>
             </div>
           </div>
@@ -222,22 +246,29 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
             </h4>
             
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              {unit.images.slice(1, 9).map((image, index) => (
-                <div key={index} className="aspect-square bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden">
+              {unit.images.slice(0, 8).map((image, index) => (
+                <div 
+                  key={index} 
+                  className="aspect-square bg-gray-200 dark:bg-gray-700 rounded-lg overflow-hidden cursor-pointer hover:scale-105 transition-transform"
+                  onClick={() => openImageViewer(index)}
+                >
                   <img 
                     src={image} 
-                    alt={`${unit.title} - Imagen ${index + 2}`}
-                    className="w-full h-full object-cover hover:scale-105 transition-transform cursor-pointer"
+                    alt={`${unit.title} - Imagen ${index + 1}`}
+                    className="w-full h-full object-cover"
                   />
                 </div>
               ))}
               
-              {unit.images.length > 9 && (
-                <div className="aspect-square bg-gray-100 dark:bg-gray-600 rounded-lg flex items-center justify-center">
+              {unit.images.length > 8 && (
+                <div 
+                  className="aspect-square bg-gray-100 dark:bg-gray-600 rounded-lg flex items-center justify-center cursor-pointer hover:bg-gray-200 dark:hover:bg-gray-500 transition-colors"
+                  onClick={() => openImageViewer(8)}
+                >
                   <div className="text-center">
                     <PhotoIcon className="h-8 w-8 text-gray-400 mx-auto mb-1" />
                     <p className="text-xs text-gray-500 dark:text-gray-400">
-                      +{unit.images.length - 9} más
+                      +{unit.images.length - 8} más
                     </p>
                   </div>
                 </div>
@@ -261,7 +292,7 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
             <div>
               <p className="font-medium text-gray-500 dark:text-gray-400">Precio por m²</p>
               <p className="text-gray-900 dark:text-white">
-                {formatCurrency(unit.monthly_rent / unit.area)}/m²
+                {formatCurrency(unit.monthly_rent / unit.area_sqm)}/m²
               </p>
             </div>
           </div>
@@ -308,6 +339,56 @@ const ViewUnitModal: React.FC<ViewUnitModalProps> = ({
         </div>
       </div>
     </Modal>
+
+    {/* Modal del visor de imágenes - FUERA del modal principal */}
+    {isImageViewerOpen && unit && (
+      <div 
+        className="fixed inset-0 bg-black bg-opacity-90 flex items-center justify-center z-[9999]"
+        onClick={() => setIsImageViewerOpen(false)}
+      >
+        <div 
+          className="relative max-w-4xl w-full mx-4 h-[80vh]"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Botón cerrar */}
+          <button
+            onClick={() => setIsImageViewerOpen(false)}
+            className="absolute top-4 right-4 z-10 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-colors"
+          >
+            <XMarkIcon className="h-6 w-6" />
+          </button>
+
+          {/* Botón anterior */}
+          <button
+            onClick={prevImage}
+            className="absolute left-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-colors"
+          >
+            <ChevronLeftIcon className="h-6 w-6" />
+          </button>
+
+          {/* Botón siguiente */}
+          <button
+            onClick={nextImage}
+            className="absolute right-4 top-1/2 transform -translate-y-1/2 z-10 bg-black bg-opacity-50 text-white p-2 rounded-full hover:bg-opacity-75 transition-colors"
+          >
+            <ChevronRightIcon className="h-6 w-6" />
+          </button>
+
+          {/* Imagen actual */}
+          <img
+            src={unit.images[currentImageIndex]}
+            alt={`${unit.title} - Imagen ${currentImageIndex + 1}`}
+            className="w-full h-full object-contain rounded-lg"
+          />
+
+          {/* Contador de imágenes */}
+          <div className="absolute bottom-4 left-1/2 transform -translate-x-1/2 bg-black bg-opacity-50 text-white px-3 py-1 rounded-full text-sm">
+            {currentImageIndex + 1} / {unit.images.length}
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 
