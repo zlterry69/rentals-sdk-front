@@ -18,8 +18,11 @@ const Map: React.FC<MapProps> = ({
   useEffect(() => {
     let map: google.maps.Map | null = null;
     let marker: google.maps.Marker | null = null;
+    let isInitialized = false;
 
     const initMap = async () => {
+      if (isInitialized) return; // Evitar múltiples inicializaciones
+      
       try {
         console.log('🚀 Iniciando Google Maps...');
         
@@ -62,6 +65,22 @@ const Map: React.FC<MapProps> = ({
         });
 
         console.log('✅ Mapa inicializado correctamente');
+        isInitialized = true;
+
+        // Hacer geocoding inverso para obtener la dirección inicial (solo una vez)
+        if (onLocationSelect && marker) {
+          try {
+            const geocoder = new google.maps.Geocoder();
+            const result = await geocoder.geocode({ location: center });
+            if (result.results[0]) {
+              const address = result.results[0].formatted_address;
+              console.log('🗺️ Dirección inicial obtenida:', address);
+              onLocationSelect({ lat: center.lat, lng: center.lng, address });
+            }
+          } catch (err) {
+            console.error('Error en geocoding inicial:', err);
+          }
+        }
 
         // Eventos
         if (onLocationSelect && marker) {
@@ -122,8 +141,9 @@ const Map: React.FC<MapProps> = ({
     
     return () => {
       clearTimeout(timer);
+      isInitialized = false;
     };
-  }, [center, isEditable, onLocationSelect]);
+  }, []); // Solo ejecutar una vez al montar el componente
 
   return (
     <div className={`relative ${className}`}>

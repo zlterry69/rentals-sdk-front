@@ -6,7 +6,6 @@ export interface Property {
   price_per_night: number;
   currency: string;
   address: string;
-  district: string;
   images: string[];
   amenities: string[];
   property_type: 'apartment' | 'house' | 'villa' | 'condo' | 'studio';

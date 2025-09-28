@@ -31,7 +31,6 @@ interface Property {
   title: string;
   description: string;
   address: string;
-  district: string;
   monthly_rent: number;
   deposit: number;
   bedrooms: number;
@@ -111,6 +110,7 @@ const PropertyDetail: React.FC = () => {
   // Map states
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: -12.0464, lng: -77.0428 });
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  const [displayAddress, setDisplayAddress] = useState<string>('Dirección por definir');
 
   // Fetch property from backend
   useEffect(() => {
@@ -122,11 +122,46 @@ const PropertyDetail: React.FC = () => {
         const response = await api.get(`/units/${id}`);
         console.log('DEBUG fetchProperty - response.data:', response.data);
         console.log('DEBUG fetchProperty - max_guests:', response.data?.max_guests);
+        console.log('DEBUG fetchProperty - address from API:', response.data?.address);
+        console.log('DEBUG fetchProperty - latitude from API:', response.data?.latitude);
+        console.log('DEBUG fetchProperty - longitude from API:', response.data?.longitude);
         setProperty(response.data);
         
         // Update map center with property coordinates
         if (response.data.latitude && response.data.longitude) {
           setMapCenter({ lat: response.data.latitude, lng: response.data.longitude });
+          
+          // Hacer geocoding inverso UNA SOLA VEZ para obtener la dirección
+          if (!response.data.address || response.data.address === 'Dirección por definir') {
+            try {
+              const geocoder = new google.maps.Geocoder();
+              const result = await geocoder.geocode({ 
+                location: { lat: response.data.latitude, lng: response.data.longitude } 
+              });
+              
+              if (result.results[0]) {
+                const address = result.results[0].formatted_address;
+                console.log('DEBUG: Dirección obtenida por geocoding:', address);
+                
+                // Actualizar la propiedad con la dirección real
+                setProperty(prev => prev ? {
+                  ...prev,
+                  address: address
+                } : null);
+                
+                // También actualizar displayAddress para mostrar inmediatamente
+                setDisplayAddress(address);
+              }
+            } catch (geocodingError) {
+              console.error('Error en geocoding inverso:', geocodingError);
+            }
+          } else {
+            // Si ya tiene dirección, usarla
+            setDisplayAddress(response.data.address);
+          }
+        } else {
+          // Si no tiene coordenadas, usar la dirección de la propiedad o placeholder
+          setDisplayAddress(response.data.address || 'Dirección por definir');
         }
       } catch (error) {
         console.error('Error fetching property:', error);
@@ -197,8 +232,10 @@ const PropertyDetail: React.FC = () => {
   // Edit mode functions
   const startEdit = (field: string) => {
     setEditingField(field);
+    setIsEditMode(true); // Asegurar que el modo edición esté activado
     
     console.log('DEBUG startEdit - field:', field);
+    console.log('DEBUG startEdit - Activando isEditMode = true');
     console.log('DEBUG startEdit - property:', property);
     console.log('DEBUG startEdit - property.max_guests:', property?.max_guests);
     console.log('DEBUG startEdit - property.monthly_rent:', property?.monthly_rent);
@@ -223,7 +260,23 @@ const PropertyDetail: React.FC = () => {
     } else {
       // For other fields, load from property
       const defaultValue = (field === 'bedrooms' || field === 'bathrooms' || field === 'area_sqm') ? 0 : '';
-      const fieldValue = property?.[field as keyof Property] || defaultValue;
+      let fieldValue = property?.[field as keyof Property] || defaultValue;
+      
+      // Si es el campo de dirección, usar la dirección seleccionada en el mapa o la de la propiedad
+      if (field === 'address') {
+        // Cuando entramos en modo de edición para dirección, el campo de arriba debe tomar el valor del campo de abajo
+        if (selectedLocation) {
+          // Si hay ubicación seleccionada en el mapa, usar esa
+          fieldValue = selectedLocation.address;
+          console.log('DEBUG startEdit - Usando dirección del mapa:', selectedLocation.address);
+        } else {
+          // Si no hay ubicación seleccionada, usar la dirección de la propiedad
+          fieldValue = property?.address || 'Dirección por definir';
+          console.log('DEBUG startEdit - Usando dirección de la propiedad:', property?.address || 'Dirección por definir');
+        }
+        console.log('DEBUG startEdit - selectedLocation:', selectedLocation);
+        console.log('DEBUG startEdit - fieldValue final:', fieldValue);
+      }
       
       console.log('DEBUG startEdit - fieldValue:', fieldValue);
       console.log('DEBUG startEdit - defaultValue:', defaultValue);
@@ -231,7 +284,12 @@ const PropertyDetail: React.FC = () => {
       
       setEditFormData({
         ...editFormData,
-        [field]: fieldValue
+        [field]: fieldValue,
+        // Si es dirección, también actualizar coordenadas
+        ...(field === 'address' && selectedLocation ? {
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lng
+        } : {})
       });
       
       console.log('DEBUG startEdit - editFormData after set:', { ...editFormData, [field]: fieldValue });
@@ -251,6 +309,9 @@ const PropertyDetail: React.FC = () => {
         images: property.images || []
       }));
     }
+    
+    // Restore original address
+    setDisplayAddress(property?.address || 'Dirección por definir');
     
     // Reload to ensure everything is restored
     window.location.reload();
@@ -317,6 +378,11 @@ const PropertyDetail: React.FC = () => {
       setEditFormData({});
       setHasChanges(false);
       setUploadProgress(0); // Reset upload progress
+      
+      // Update displayAddress with the saved address
+      if (editFormData.address) {
+        setDisplayAddress(editFormData.address);
+      }
       
       // Refresh payment methods if they were updated
       if (editingField === 'payment_methods') {
@@ -443,20 +509,13 @@ const PropertyDetail: React.FC = () => {
   // Handle location selection from map
   const handleLocationSelect = (location: { lat: number; lng: number; address: string }) => {
     console.log('DEBUG: Ubicación seleccionada:', location);
+    console.log('DEBUG: Estado actual - isOwner:', isOwner, 'isEditMode:', isEditMode, 'editingField:', editingField);
     setSelectedLocation(location);
     
-    // Actualizar la dirección en el estado de la propiedad para mostrarla siempre
-    if (property) {
-      setProperty(prev => prev ? {
-        ...prev,
-        address: location.address,
-        latitude: location.lat,
-        longitude: location.lng
-      } : null);
-    }
-    
-    // Solo actualizar editFormData si estamos en modo de edición (para guardar)
+    // Solo actualizar la dirección principal si estamos en modo de edición para la dirección
     if (isOwner && isEditMode && editingField === 'address') {
+      console.log('DEBUG: ✅ Condiciones cumplidas - actualizando dirección principal');
+      setDisplayAddress(location.address);
       setEditFormData({
         ...editFormData,
         address: location.address,
@@ -464,13 +523,15 @@ const PropertyDetail: React.FC = () => {
         longitude: location.lng
       });
       setHasChanges(true);
-      console.log('DEBUG: editFormData actualizado con coordenadas (modo edición):', {
+      console.log('DEBUG: editFormData actualizado con coordenadas (modo edición para dirección):', {
         address: location.address,
         latitude: location.lat,
         longitude: location.lng
       });
+      console.log('DEBUG: hasChanges activado = true');
     } else {
-      console.log('DEBUG: Ubicación seleccionada - dirección actualizada pero no se guarda hasta modo de edición');
+      console.log('DEBUG: ❌ Condiciones NO cumplidas - solo se actualiza "Ubicación actual" (abajo)');
+      console.log('DEBUG: isOwner:', isOwner, 'isEditMode:', isEditMode, 'editingField:', editingField);
     }
   };
 
@@ -742,28 +803,26 @@ const PropertyDetail: React.FC = () => {
                 </div>
                 <div className="flex items-center space-x-1">
                   <MapPinIcon className="h-5 w-5" />
-                  {isOwner && isEditMode && editingField === 'district' ? (
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="text"
-                        value={editFormData.district || ''}
-                        onChange={(e) => handleFieldChange('district', e.target.value)}
-                        className="text-gray-700 bg-transparent border-b border-blue-500 focus:outline-none"
-                        placeholder="Distrito"
-                      />
-                      <span>, Perú</span>
-                    </div>
-                  ) : (
-                    <span>{property.district}, Perú</span>
-                  )}
-                  {isOwner && isEditMode && (
-                    <button
-                      onClick={() => editingField === 'district' ? cancelEdit() : startEdit('district')}
-                      className="text-blue-600 hover:text-blue-800 p-1 ml-2"
-                    >
-                      <PencilIcon className="h-4 w-4" />
-                    </button>
-                  )}
+                  <span className="text-gray-900 font-medium">
+                    {(() => {
+                      const isEditingAddress = isOwner && isEditMode && editingField === 'address';
+                      const addressToShow = isEditingAddress 
+                        ? (selectedLocation ? selectedLocation.address : (property?.address || 'Dirección por definir'))
+                        : (property?.address || 'Dirección por definir');
+                      
+                      console.log('DEBUG dirección arriba:', {
+                        isOwner,
+                        isEditMode,
+                        editingField,
+                        isEditingAddress,
+                        selectedLocation: selectedLocation?.address,
+                        propertyAddress: property?.address,
+                        addressToShow
+                      });
+                      
+                      return addressToShow;
+                    })()}
+                  </span>
                 </div>
               </div>
             </div>
@@ -1639,10 +1698,30 @@ const PropertyDetail: React.FC = () => {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <h3 className="text-xl font-semibold text-gray-900">Ubicación</h3>
-                    {isOwner && isEditMode && (
+                    {isOwner && (
                       <button
-                        onClick={() => editingField === 'address' ? cancelEdit() : startEdit('address')}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        onClick={() => {
+                          console.log('DEBUG: Botón Editar/Cancelar dirección clickeado');
+                          console.log('DEBUG: editingField actual:', editingField);
+                          console.log('DEBUG: isEditMode actual:', isEditMode);
+                          console.log('DEBUG: hasChanges actual:', hasChanges);
+                          
+                          if (editingField === 'address') {
+                            cancelEdit();
+                          } else {
+                            console.log('DEBUG: Activando edición de dirección');
+                            startEdit('address');
+                            
+                            // Activar hasChanges para mostrar el botón Guardar Cambios
+                            if (!hasChanges) {
+                              console.log('DEBUG: Activando hasChanges = true para mostrar botón Guardar');
+                              setHasChanges(true);
+                            } else {
+                              console.log('DEBUG: hasChanges ya estaba activado, no hacer nada');
+                            }
+                          }
+                        }}
+                        className="text-blue-600 hover:text-blue-800 text-sm font-medium bg-blue-50 px-3 py-1 rounded border"
                       >
                         <PencilIcon className="h-4 w-4 inline mr-1" />
                         {editingField === 'address' ? 'Cancelar' : 'Editar'}
@@ -1652,7 +1731,9 @@ const PropertyDetail: React.FC = () => {
                   
                   <div className="flex items-center space-x-2 text-gray-600 mb-4">
                     <MapPinIcon className="h-5 w-5" />
-                    <span>{property?.address || selectedLocation?.address || 'Ubicación no especificada'}</span>
+                    <span className="text-gray-900 font-medium">
+                      {selectedLocation ? selectedLocation.address : (property?.address || 'Dirección por definir')}
+                    </span>
                   </div>
                   
                   <Map
@@ -1666,44 +1747,17 @@ const PropertyDetail: React.FC = () => {
                     Debug: isOwner={isOwner ? 'true' : 'false'}, isEditMode={isEditMode ? 'true' : 'false'}, editingField={editingField || 'null'}
                   </div>
                   
-                  {isOwner && isEditMode && editingField === 'address' && (
-                    <div className="space-y-4">
-                      {selectedLocation && (
-                        <div className="p-3 bg-green-50 border border-green-200 rounded-md">
-                          <p className="text-sm text-green-800">
-                            <strong>Nueva ubicación seleccionada:</strong> {selectedLocation.address}
-                          </p>
-                          <p className="text-xs text-green-600 mt-1">
-                            Haz clic en "Guardar ubicación" para aplicar los cambios
-                          </p>
-                        </div>
-                      )}
-                      <div className="flex justify-end space-x-2">
-                        <button
-                          onClick={cancelEdit}
-                          className="px-4 py-2 text-gray-600 hover:text-gray-800"
-                        >
-                          Cancelar
-                        </button>
-                        <button
-                          onClick={saveEdit}
-                          disabled={!selectedLocation}
-                          className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          Guardar ubicación
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  
-                  {/* Mostrar ubicación actual cuando no está en modo de edición */}
-                  {selectedLocation && !(isOwner && isEditMode && editingField === 'address') && (
+                  {/* Mostrar ubicación actual cuando hay una seleccionada */}
+                  {selectedLocation && (
                     <div className="p-3 bg-blue-50 border border-blue-200 rounded-md">
                       <p className="text-sm text-blue-800">
                         <strong>Ubicación actual:</strong> {selectedLocation.address}
                       </p>
                       <p className="text-xs text-blue-600 mt-1">
-                        Solo el propietario puede cambiar esta ubicación
+                        {isOwner && isEditMode 
+                          ? "Arrastra el marcador para cambiar la ubicación y guarda los cambios"
+                          : "Solo el propietario puede cambiar esta ubicación"
+                        }
                       </p>
                     </div>
                   )}
