@@ -54,7 +54,7 @@ const Debtors: React.FC = () => {
         // Si es un error 404 o la tabla no existe, mostrar lista vacía
         if (error.response?.status === 404 || error.response?.status === 500) {
           setDebtors([]);
-          toast.info('No hay inquilinos registrados aún');
+          toast('No hay inquilinos registrados aún');
         } else {
           toast.error('Error al cargar inquilinos');
         }
