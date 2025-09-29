@@ -53,6 +53,7 @@ const Units: React.FC = () => {
   const [viewingUnit, setViewingUnit] = useState<Unit | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [loadingUnits, setLoadingUnits] = useState<Set<string>>(new Set());
   
   // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -125,6 +126,36 @@ const Units: React.FC = () => {
     }
   };
 
+  // Función para cargar ratings de forma individual
+  const loadRatingsIndividually = async (unitsData: Unit[]) => {
+    for (const unit of unitsData) {
+      // Marcar como cargando
+      setLoadingUnits(prev => new Set(prev).add(unit.public_id));
+      
+      try {
+        const { rating, total_reviews } = await calculatePropertyRating(unit.public_id);
+        
+        // Actualizar solo esta unidad
+        setUnits(prevUnits => 
+          prevUnits.map(u => 
+            u.public_id === unit.public_id 
+              ? { ...u, real_rating: rating, real_total_reviews: total_reviews }
+              : u
+          )
+        );
+      } catch (error) {
+        console.error(`Error loading rating for unit ${unit.public_id}:`, error);
+      } finally {
+        // Quitar de cargando
+        setLoadingUnits(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(unit.public_id);
+          return newSet;
+        });
+      }
+    }
+  };
+
   const fetchUnits = async () => {
     try {
       setIsLoading(true);
@@ -157,20 +188,18 @@ const Units: React.FC = () => {
         unitsData = allUnits.slice(startIndex, endIndex);
       }
 
-      // Calculate real-time ratings for each unit
-      const unitsWithRatings = await Promise.all(
-        unitsData.map(async (unit: Unit) => {
-          const { rating, total_reviews } = await calculatePropertyRating(unit.public_id);
-          return {
-            ...unit,
-            real_rating: rating,
-            real_total_reviews: total_reviews
-          };
-        })
-      );
+      // Mostrar las unidades inmediatamente con datos básicos
+      const unitsWithBasicData = unitsData.map((unit: Unit) => ({
+        ...unit,
+        real_rating: unit.rating || 0,
+        real_total_reviews: unit.total_reviews || 0
+      }));
 
-      setUnits(unitsWithRatings);
+      setUnits(unitsWithBasicData);
       setIsLoading(false);
+
+      // Cargar ratings en tiempo real de forma individual
+      loadRatingsIndividually(unitsData);
     } catch (error) {
       console.error('Error fetching units:', error);
       toast.error('Error al cargar unidades');
@@ -472,7 +501,14 @@ const Units: React.FC = () => {
                 <div className="flex items-center">
                   <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
                   <span className="ml-1 text-sm text-gray-600">
-                    {unit.real_rating || 0} ({unit.real_total_reviews || 0})
+                    {loadingUnits.has(unit.public_id) ? (
+                      <span className="flex items-center">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400 mr-1"></div>
+                        Cargando...
+                      </span>
+                    ) : (
+                      `${unit.real_rating || 0} (${unit.real_total_reviews || 0})`
+                    )}
                   </span>
                 </div>
               </div>

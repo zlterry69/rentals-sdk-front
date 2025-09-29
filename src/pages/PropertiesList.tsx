@@ -71,6 +71,7 @@ const PropertiesList: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [loadingProperties, setLoadingProperties] = useState<Set<string>>(new Set());
 
   const toggleFavorite = async (propertyId: string) => {
     if (!isAuthenticated) {
@@ -118,6 +119,43 @@ const PropertiesList: React.FC = () => {
     }
   };
 
+  // Función para cargar ratings de forma individual
+  const loadRatingsIndividually = async (propertiesData: Property[]) => {
+    for (const property of propertiesData) {
+      // Marcar como cargando
+      setLoadingProperties(prev => new Set(prev).add(property.public_id));
+      
+      try {
+        const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
+        
+        // Actualizar solo esta propiedad
+        setProperties(prevProperties => 
+          prevProperties.map(p => 
+            p.public_id === property.public_id 
+              ? { ...p, real_rating: rating, real_total_reviews: total_reviews }
+              : p
+          )
+        );
+        setFilteredProperties(prevProperties => 
+          prevProperties.map(p => 
+            p.public_id === property.public_id 
+              ? { ...p, real_rating: rating, real_total_reviews: total_reviews }
+              : p
+          )
+        );
+      } catch (error) {
+        console.error(`Error loading rating for property ${property.public_id}:`, error);
+      } finally {
+        // Quitar de cargando
+        setLoadingProperties(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(property.public_id);
+          return newSet;
+        });
+      }
+    }
+  };
+
   // Fetch user favorites
   const fetchFavorites = async () => {
     if (!isAuthenticated) return;
@@ -140,20 +178,18 @@ const PropertiesList: React.FC = () => {
         const response = await api.get('/units/available');
         const propertiesData = response.data || [];
         
-        // Calculate real-time ratings for each property
-        const propertiesWithRatings = await Promise.all(
-          propertiesData.map(async (property: Property) => {
-            const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
-            return {
-              ...property,
-              real_rating: rating,
-              real_total_reviews: total_reviews
-            };
-          })
-        );
+        // Mostrar las propiedades inmediatamente con datos básicos
+        const propertiesWithBasicData = propertiesData.map((property: Property) => ({
+          ...property,
+          real_rating: property.rating || 0,
+          real_total_reviews: property.total_reviews || 0
+        }));
         
-        setProperties(propertiesWithRatings);
-        setFilteredProperties(propertiesWithRatings);
+        setProperties(propertiesWithBasicData);
+        setFilteredProperties(propertiesWithBasicData);
+
+        // Cargar ratings en tiempo real de forma individual
+        loadRatingsIndividually(propertiesData);
       } catch (error) {
         console.error('Error fetching properties:', error);
         toast.error('Error al cargar propiedades');
@@ -406,8 +442,17 @@ const PropertiesList: React.FC = () => {
                   </h3>
                   <div className="flex items-center space-x-1">
                     <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">{property.real_rating || 0}</span>
-                    <span className="text-sm text-gray-500">({property.real_total_reviews || 0})</span>
+                    {loadingProperties.has(property.public_id) ? (
+                      <span className="flex items-center text-sm text-gray-600">
+                        <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400 mr-1"></div>
+                        Cargando...
+                      </span>
+                    ) : (
+                      <>
+                        <span className="text-sm text-gray-600">{property.real_rating || 0}</span>
+                        <span className="text-sm text-gray-500">({property.real_total_reviews || 0})</span>
+                      </>
+                    )}
                   </div>
                 </div>
 

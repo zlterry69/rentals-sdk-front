@@ -72,6 +72,7 @@ const ExploreRentals: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  const [loadingProperties, setLoadingProperties] = useState<Set<string>>(new Set());
   
   // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -96,6 +97,36 @@ const ExploreRentals: React.FC = () => {
     } catch (error) {
       console.error('Error fetching reviews for property:', propertyPublicId, error);
       return { rating: 0, total_reviews: 0 };
+    }
+  };
+
+  // Función para cargar ratings de forma individual
+  const loadRatingsIndividually = async (propertiesData: Property[]) => {
+    for (const property of propertiesData) {
+      // Marcar como cargando
+      setLoadingProperties(prev => new Set(prev).add(property.public_id));
+      
+      try {
+        const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
+        
+        // Actualizar solo esta propiedad
+        setProperties(prevProperties => 
+          prevProperties.map(p => 
+            p.public_id === property.public_id 
+              ? { ...p, real_rating: rating, real_total_reviews: total_reviews }
+              : p
+          )
+        );
+      } catch (error) {
+        console.error(`Error loading rating for property ${property.public_id}:`, error);
+      } finally {
+        // Quitar de cargando
+        setLoadingProperties(prev => {
+          const newSet = new Set(prev);
+          newSet.delete(property.public_id);
+          return newSet;
+        });
+      }
     }
   };
 
@@ -150,21 +181,18 @@ const ExploreRentals: React.FC = () => {
           propertiesData = allProperties.slice(startIndex, endIndex);
         }
         
-        // Calculate real-time ratings for each property
-        const propertiesWithRatings = await Promise.all(
-          propertiesData.map(async (property: Property) => {
-            const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
-            return {
-              ...property,
-              real_rating: rating,
-              real_total_reviews: total_reviews
-            };
-          })
-        );
+        // Mostrar las propiedades inmediatamente con datos básicos
+        const propertiesWithBasicData = propertiesData.map((property: Property) => ({
+          ...property,
+          real_rating: property.rating || 0,
+          real_total_reviews: property.total_reviews || 0
+        }));
         
-        setProperties(propertiesWithRatings);
-        
+        setProperties(propertiesWithBasicData);
         setIsLoading(false);
+
+        // Cargar ratings en tiempo real de forma individual
+        loadRatingsIndividually(propertiesData);
       } catch (error) {
         console.error('Error fetching properties:', error);
         toast.error('Error al cargar propiedades');
@@ -199,7 +227,7 @@ const ExploreRentals: React.FC = () => {
                          (property.district && property.district.toLowerCase().includes(searchTerm.toLowerCase()));
     
     // Favorites filter - only show properties that are in favorites array
-    const matchesFavorites = !showFavoritesOnly || favorites.includes(property.id);
+    const matchesFavorites = !showFavoritesOnly || favorites.includes(property.public_id);
     
     return matchesSearch && matchesFavorites && property.status === 'available';
   });
@@ -408,10 +436,10 @@ const ExploreRentals: React.FC = () => {
                 
                 {/* Favorite Button */}
                 <button
-                  onClick={() => toggleFavorite(property.id)}
+                  onClick={() => toggleFavorite(property.public_id)}
                   className="absolute top-3 right-3 p-2 rounded-full bg-white/80 hover:bg-white transition-colors"
                 >
-                  {favorites.includes(property.id) ? (
+                  {favorites.includes(property.public_id) ? (
                     <HeartSolidIcon className="h-5 w-5 text-red-500" />
                   ) : (
                     <HeartIcon className="h-5 w-5 text-gray-600" />
@@ -428,7 +456,14 @@ const ExploreRentals: React.FC = () => {
                   <div className="flex items-center">
                     <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
                     <span className="ml-1 text-sm text-gray-600">
-                      {property.real_rating || 0} ({property.real_total_reviews || 0})
+                      {loadingProperties.has(property.public_id) ? (
+                        <span className="flex items-center">
+                          <div className="animate-spin rounded-full h-3 w-3 border-b-2 border-gray-400 mr-1"></div>
+                          Cargando...
+                        </span>
+                      ) : (
+                        `${property.real_rating || 0} (${property.real_total_reviews || 0})`
+                      )}
                     </span>
                   </div>
                 </div>
