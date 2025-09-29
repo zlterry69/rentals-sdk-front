@@ -80,14 +80,18 @@ export const ProfileImageUpload: React.FC<ProfileImageUploadProps> = ({
 
   const handleRemoveImage = async () => {
     try {
-      // Update profile with empty image URL
-      await updateProfile({ profile_image: '' });
+      // Create FormData with empty profile_image to remove it
+      const formData = new FormData();
+      formData.append('profile_image', ''); // Empty string to remove image
+      
+      await updateProfile(formData);
       
       setPreviewUrl(null);
       onImageUpdate('');
       toast.success('Foto de perfil eliminada');
       
     } catch (error) {
+      console.error('Error removing image:', error);
       toast.error('Error al eliminar la imagen');
     }
   };

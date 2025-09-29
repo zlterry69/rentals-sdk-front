@@ -123,13 +123,21 @@ export const Sidebar: React.FC = () => {
             </li>
             <li className="mt-auto">
               <div className="flex items-center gap-x-4 px-2 py-3 text-sm font-semibold leading-6 text-gray-900">
-                <div className="h-10 w-12 rounded-full bg-gray-300 flex items-center justify-center">
-                  <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                    {user?.full_name 
-                      ? user.full_name.split(' ').map(name => name[0]).join('').slice(0, 2).toUpperCase()
-                      : user?.email?.[0]?.toUpperCase() || 'U'
-                    }
-                  </span>
+                <div className="h-10 w-12 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+                  {user?.profile_image ? (
+                    <img
+                      src={user.profile_image}
+                      alt="Profile"
+                      className="h-full w-full object-cover"
+                    />
+                  ) : (
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
+                      {user?.full_name 
+                        ? user.full_name.split(' ').map(name => name[0]).join('').slice(0, 2).toUpperCase()
+                        : user?.email?.[0]?.toUpperCase() || 'U'
+                      }
+                    </span>
+                  )}
                 </div>
                 <span className="sr-only">Tu perfil</span>
                 <span aria-hidden="true" className="dark:text-white">

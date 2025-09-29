@@ -27,6 +27,7 @@ interface User {
   role: 'user' | 'admin' | 'superadmin';
   is_active: boolean;
   is_verified: boolean;
+  profile_image?: string;
   created_at: string;
   last_login: string | null;
 }
@@ -426,13 +427,21 @@ export const Users: React.FC = () => {
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">
                       <div className="h-10 w-10 flex-shrink-0">
-                        <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                          <span className="text-sm font-medium text-gray-700">
-                            {user.full_name 
-                              ? user.full_name.split(' ').map(name => name[0]).join('').slice(0, 2).toUpperCase()
-                              : user.email[0].toUpperCase()
-                            }
-                          </span>
+                        <div className="h-10 w-10 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+                          {user.profile_image ? (
+                            <img
+                              src={user.profile_image}
+                              alt={user.full_name || user.email}
+                              className="h-full w-full object-cover"
+                            />
+                          ) : (
+                            <span className="text-sm font-medium text-gray-700">
+                              {user.full_name 
+                                ? user.full_name.split(' ').map(name => name[0]).join('').slice(0, 2).toUpperCase()
+                                : user.email[0].toUpperCase()
+                              }
+                            </span>
+                          )}
                         </div>
                       </div>
                       <div className="ml-4">

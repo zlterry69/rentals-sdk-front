@@ -51,12 +51,12 @@ const Register: React.FC = () => {
           </p>
           <p className="mt-2 text-sm text-gray-600">
             ¿Ya tienes cuenta?{' '}
-            <Link
-              to="/login"
+            <button
+              onClick={() => window.dispatchEvent(new CustomEvent('showLoginModal'))}
               className="font-medium text-blue-600 hover:text-blue-500"
             >
               Inicia sesión aquí
-            </Link>
+            </button>
           </p>
         </div>
           <form className="mt-8 space-y-6" onSubmit={handleSubmit(onSubmit)}>

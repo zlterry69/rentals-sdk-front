@@ -29,6 +29,17 @@ apiClient.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
+    
+    // Debug log for login requests
+    if (config.url?.includes('/auth/login')) {
+      console.log('Login request config:', {
+        url: config.url,
+        method: config.method,
+        data: config.data,
+        headers: config.headers
+      });
+    }
+    
     return config;
   },
   (error) => {
@@ -56,11 +67,13 @@ const handleResponseError = (error: AxiosError) => {
     
     switch (status) {
       case 401:
-        // Unauthorized - redirect to login
+        // Unauthorized - clear auth data and trigger login modal
         localStorage.removeItem('auth_token');
         localStorage.removeItem('user_data');
-        // Use window.location.replace to avoid back button issues
-        window.location.replace('/login');
+        // Dispatch custom event to trigger login modal
+        window.dispatchEvent(new CustomEvent('showLoginModal'));
+        // Also dispatch event to update auth context
+        window.dispatchEvent(new CustomEvent('authLogout'));
         toast.error('Tu sesión ha expirado. Por favor, inicia sesión nuevamente.');
         break;
       case 403:

@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { XMarkIcon } from '@heroicons/react/24/outline';
 import { api } from '@/app/api';
 import toast from 'react-hot-toast';
+import Map from '@/components/Map';
 
 interface CreatePropertyModalProps {
   isOpen: boolean;
@@ -13,23 +15,18 @@ interface PropertyFormData {
   title: string;
   description: string;
   address: string;
-  district: string;
   monthly_rent: number;
   deposit: number;
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  area_sqm: number;
   property_type: string;
   amenities: string[];
-  rules: string;
   available_from: string;
+  latitude?: number;
+  longitude?: number;
 }
 
-const DISTRICTS = [
-  'Lima', 'Miraflores', 'San Isidro', 'Barranco', 'Surco', 'La Molina',
-  'Jesús María', 'Magdalena', 'Pueblo Libre', 'San Miguel', 'Lince',
-  'Breña', 'Cercado de Lima', 'Rímac', 'San Martín de Porres'
-];
 
 const UNIT_TYPES = [
   { value: 'apartment', label: 'Departamento' },
@@ -51,21 +48,36 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
   onClose,
   onSuccess
 }) => {
+  const navigate = useNavigate();
   const [isLoading, setIsLoading] = useState(false);
   const [formData, setFormData] = useState<PropertyFormData>({
     title: '',
     description: '',
     address: '',
-    district: 'Lima',
     monthly_rent: 0,
     deposit: 0,
     bedrooms: 1,
     bathrooms: 1,
-    area: 50,
+    area_sqm: 50,
     property_type: 'apartment',
     amenities: [],
-    rules: '',
     available_from: new Date().toISOString().split('T')[0]
+  });
+
+  // Estados para el mapa
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: -12.0464, lng: -77.0428 });
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
+
+  // Estados para métodos de pago
+  const [paymentMethods, setPaymentMethods] = useState({
+    accepts_yape: false,
+    accepts_plin: false,
+    accepts_bitcoin: false,
+    accepts_ethereum: false,
+    accepts_usdt: false,
+    accepts_bank_transfer: false,
+    accepts_mercadopago: false,
+    accepts_izipay: false
   });
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>) => {
@@ -73,7 +85,7 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
     setFormData(prev => ({
       ...prev,
       [name]: name.includes('rent') || name.includes('deposit') || name.includes('bedrooms') || 
-              name.includes('bathrooms') || name.includes('area') 
+              name.includes('bathrooms') || name.includes('area_sqm') 
         ? parseFloat(value) || 0 
         : value
     }));
@@ -85,6 +97,23 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
       amenities: prev.amenities.includes(amenity)
         ? prev.amenities.filter(a => a !== amenity)
         : [...prev.amenities, amenity]
+    }));
+  };
+
+  const handleLocationSelect = (location: { lat: number; lng: number; address: string }) => {
+    setSelectedLocation(location);
+    setFormData(prev => ({
+      ...prev,
+      address: location.address,
+      latitude: location.lat,
+      longitude: location.lng
+    }));
+  };
+
+  const handlePaymentMethodToggle = (method: string) => {
+    setPaymentMethods(prev => ({
+      ...prev,
+      [method]: !prev[method as keyof typeof prev]
     }));
   };
 
@@ -117,25 +146,49 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
       const response = await api.post('/units', propertyData);
 
       if (response.data) {
+        // Crear métodos de pago si hay alguno seleccionado
+        const hasPaymentMethods = Object.values(paymentMethods).some(value => value);
+        if (hasPaymentMethods) {
+          try {
+            await api.put('/payment-accounts/', paymentMethods);
+          } catch (paymentError) {
+            console.error('Error creating payment methods:', paymentError);
+            // No mostramos error al usuario porque la propiedad ya se creó
+          }
+        }
+
         toast.success('Propiedad creada exitosamente');
         onSuccess();
         onClose();
+        
+        // Redirigir a la vista de edición de la propiedad recién creada
+        navigate(`/properties/${response.data.public_id}?edit=true`);
         
         // Resetear formulario
         setFormData({
           title: '',
           description: '',
           address: '',
-          district: 'Lima',
           monthly_rent: 0,
           deposit: 0,
           bedrooms: 1,
           bathrooms: 1,
-          area: 50,
+          area_sqm: 50,
           property_type: 'apartment',
           amenities: [],
-          rules: '',
           available_from: new Date().toISOString().split('T')[0]
+        });
+        
+        // Resetear métodos de pago
+        setPaymentMethods({
+          accepts_yape: false,
+          accepts_plin: false,
+          accepts_bitcoin: false,
+          accepts_ethereum: false,
+          accepts_usdt: false,
+          accepts_bank_transfer: false,
+          accepts_mercadopago: false,
+          accepts_izipay: false
         });
       }
     } catch (error: any) {
@@ -198,7 +251,7 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
                 />
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
                   Dirección *
                 </label>
@@ -208,26 +261,29 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
                   value={formData.address}
                   onChange={handleInputChange}
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="Ej: Av. Larco 123"
+                  placeholder="Selecciona una ubicación en el mapa"
+                  readOnly
                   required
                 />
               </div>
 
-              <div>
+              <div className="md:col-span-2">
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Distrito
+                  Ubicación en el Mapa *
                 </label>
-                <select
-                  name="district"
-                  value={formData.district}
-                  onChange={handleInputChange}
-                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                >
-                  {DISTRICTS.map(district => (
-                    <option key={district} value={district}>{district}</option>
-                  ))}
-                </select>
+                <div className="h-64 w-full rounded-lg border-2 border-gray-300">
+                  <Map
+                    center={mapCenter}
+                    onLocationSelect={handleLocationSelect}
+                    isEditable={true}
+                    className="h-full w-full"
+                  />
+                </div>
+                <p className="mt-2 text-sm text-gray-500">
+                  Arrastra el marcador rojo para seleccionar la ubicación exacta
+                </p>
               </div>
+
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
@@ -296,8 +352,8 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
                 </label>
                 <input
                   type="number"
-                  name="area"
-                  value={formData.area}
+                  name="area_sqm"
+                  value={formData.area_sqm}
                   onChange={handleInputChange}
                   min="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
@@ -306,7 +362,7 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
 
               <div>
                 <label className="block text-sm font-medium text-gray-700 mb-2">
-                  Precio/mes (S/)
+                  Precio por noche (S/)
                 </label>
                 <input
                   type="number"
@@ -314,25 +370,92 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
                   value={formData.monthly_rent}
                   onChange={handleInputChange}
                   min="0"
+                  step="1"
                   className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
                   required
                 />
               </div>
             </div>
 
+            {/* Métodos de pago */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Depósito (S/) - Opcional
+              <label className="block text-sm font-medium text-gray-700 mb-3">
+                Métodos de pago
               </label>
-              <input
-                type="number"
-                name="deposit"
-                value={formData.deposit}
-                onChange={handleInputChange}
-                min="0"
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Por defecto: 2 meses de alquiler"
-              />
+              <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_yape}
+                    onChange={() => handlePaymentMethodToggle('accepts_yape')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Yape</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_plin}
+                    onChange={() => handlePaymentMethodToggle('accepts_plin')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Plin</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_mercadopago}
+                    onChange={() => handlePaymentMethodToggle('accepts_mercadopago')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">MercadoPago</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_izipay}
+                    onChange={() => handlePaymentMethodToggle('accepts_izipay')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Izipay</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_bank_transfer}
+                    onChange={() => handlePaymentMethodToggle('accepts_bank_transfer')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Transferencia</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_bitcoin}
+                    onChange={() => handlePaymentMethodToggle('accepts_bitcoin')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Bitcoin</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_ethereum}
+                    onChange={() => handlePaymentMethodToggle('accepts_ethereum')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">Ethereum</span>
+                </label>
+                <label className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={paymentMethods.accepts_usdt}
+                    onChange={() => handlePaymentMethodToggle('accepts_usdt')}
+                    className="rounded border-gray-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-700">USDT</span>
+                </label>
+              </div>
             </div>
 
             {/* Comodidades */}
@@ -355,20 +478,6 @@ export const CreatePropertyModal: React.FC<CreatePropertyModalProps> = ({
               </div>
             </div>
 
-            {/* Reglas */}
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Reglas de la casa
-              </label>
-              <textarea
-                name="rules"
-                value={formData.rules}
-                onChange={handleInputChange}
-                rows={3}
-                className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                placeholder="Ej: No fumar, No mascotas, Silencio después de las 10pm..."
-              />
-            </div>
 
             {/* Botones */}
             <div className="flex justify-end space-x-3 pt-4 border-t">

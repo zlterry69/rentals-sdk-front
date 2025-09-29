@@ -6,6 +6,7 @@ import Modal from '@/components/ui/Modal';
 import { LoadingSpinner } from '@/components/ui/LoadingSpinner';
 import { apiClient } from '@/app/api';
 import toast from 'react-hot-toast';
+import Map from '@/components/Map';
 
 // Interfaces
 interface Unit {
@@ -13,17 +14,18 @@ interface Unit {
   public_id: string;
   title: string;
   address: string;
-  district: string;
   property_type: string;
   bedrooms: number;
   bathrooms: number;
-  area: number;
+  area_sqm: number;
   monthly_rent: number;
   status: 'available' | 'occupied' | 'maintenance';
   tenant_name?: string;
   images: string[];
   rating: number;
   total_reviews: number;
+  latitude?: number;
+  longitude?: number;
 }
 
 interface EditUnitModalProps {
@@ -37,11 +39,10 @@ interface EditUnitModalProps {
 const unitSchema = z.object({
   title: z.string().min(3, 'El título debe tener al menos 3 caracteres'),
   address: z.string().min(5, 'La dirección debe tener al menos 5 caracteres'),
-  district: z.string().min(2, 'El distrito es requerido'),
   property_type: z.enum(['apartment', 'house', 'studio', 'room']),
   bedrooms: z.number().min(0, 'Las habitaciones no pueden ser negativas'),
   bathrooms: z.number().min(0, 'Los baños no pueden ser negativos'),
-  area: z.number().min(1, 'El área debe ser mayor a 0'),
+  area_sqm: z.number().min(1, 'El área debe ser mayor a 0'),
   monthly_rent: z.number().min(0, 'El alquiler debe ser mayor a 0'),
   status: z.enum(['available', 'occupied', 'maintenance']),
 });
@@ -55,6 +56,8 @@ const EditUnitModal: React.FC<EditUnitModalProps> = ({
   onUpdate
 }) => {
   const [isLoading, setIsLoading] = useState(false);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: -12.0464, lng: -77.0428 });
+  const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
 
   const {
     register,
@@ -71,22 +74,45 @@ const EditUnitModal: React.FC<EditUnitModalProps> = ({
     if (unit) {
       setValue('title', unit.title);
       setValue('address', unit.address);
-      setValue('district', unit.district);
       setValue('property_type', unit.property_type as any);
       setValue('bedrooms', unit.bedrooms);
       setValue('bathrooms', unit.bathrooms);
-      setValue('area', unit.area);
+      setValue('area_sqm', unit.area_sqm);
       setValue('monthly_rent', unit.monthly_rent);
       setValue('status', unit.status as any);
+      
+      // Configurar el mapa con las coordenadas de la unidad
+      if (unit.latitude && unit.longitude) {
+        setMapCenter({ lat: unit.latitude, lng: unit.longitude });
+        setSelectedLocation({ 
+          lat: unit.latitude, 
+          lng: unit.longitude, 
+          address: unit.address 
+        });
+      }
     }
   }, [unit, setValue]);
+
+  const handleLocationSelect = (location: { lat: number; lng: number; address: string }) => {
+    setSelectedLocation(location);
+    setValue('address', location.address);
+  };
 
   const onSubmit = async (data: UnitFormData) => {
     if (!unit) return;
 
     setIsLoading(true);
     try {
-      const response = await apiClient.put(`/units/${unit.public_id}`, data);
+      // Incluir coordenadas si hay una ubicación seleccionada
+      const updateData = {
+        ...data,
+        ...(selectedLocation && {
+          latitude: selectedLocation.lat,
+          longitude: selectedLocation.lng
+        })
+      };
+
+      const response = await apiClient.put(`/units/${unit.public_id}`, updateData);
       
       onUpdate(response.data);
       toast.success('Unidad actualizada correctamente');
@@ -106,11 +132,6 @@ const EditUnitModal: React.FC<EditUnitModalProps> = ({
 
   if (!unit) return null;
 
-  const districts = [
-    'Lima', 'Miraflores', 'San Isidro', 'Barranco', 'Santiago de Surco',
-    'La Molina', 'San Borja', 'Magdalena', 'Jesús María', 'Lince',
-    'Pueblo Libre', 'San Miguel', 'Chorrillos', 'Villa El Salvador'
-  ];
 
   return (
     <Modal
@@ -136,42 +157,41 @@ const EditUnitModal: React.FC<EditUnitModalProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          {/* Dirección */}
-          <div>
-            <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Dirección *
-            </label>
-            <input
-              {...register('address')}
-              type="text"
-              placeholder="Ej: Av. Larco 123"
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            />
-            {errors.address && (
-              <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>
-            )}
-          </div>
-
-          {/* Distrito */}
-          <div>
-            <label htmlFor="district" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
-              Distrito *
-            </label>
-            <select
-              {...register('district')}
-              className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
-            >
-              <option value="">Seleccionar distrito</option>
-              {districts.map(district => (
-                <option key={district} value={district}>{district}</option>
-              ))}
-            </select>
-            {errors.district && (
-              <p className="mt-1 text-sm text-red-600">{errors.district.message}</p>
-            )}
-          </div>
+        {/* Dirección */}
+        <div>
+          <label htmlFor="address" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            Dirección *
+          </label>
+          <input
+            {...register('address')}
+            type="text"
+            placeholder="Selecciona una ubicación en el mapa"
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            readOnly
+          />
+          {errors.address && (
+            <p className="mt-1 text-sm text-red-600">{errors.address.message}</p>
+          )}
         </div>
+
+        {/* Mapa */}
+        <div>
+          <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+            Ubicación en el Mapa *
+          </label>
+          <div className="h-64 w-full rounded-lg border-2 border-gray-300">
+            <Map
+              center={mapCenter}
+              onLocationSelect={handleLocationSelect}
+              isEditable={true}
+              className="h-full w-full"
+            />
+          </div>
+          <p className="mt-2 text-sm text-gray-500">
+            Arrastra el marcador rojo para seleccionar la ubicación exacta
+          </p>
+        </div>
+
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {/* Tipo de propiedad */}
@@ -248,17 +268,17 @@ const EditUnitModal: React.FC<EditUnitModalProps> = ({
 
           {/* Área */}
           <div>
-            <label htmlFor="area" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
+            <label htmlFor="area_sqm" className="block text-sm font-medium text-gray-700 dark:text-gray-300">
               Área (m²) *
             </label>
             <input
-              {...register('area', { valueAsNumber: true })}
+              {...register('area_sqm', { valueAsNumber: true })}
               type="number"
               min="1"
               className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-primary-500 focus:ring-primary-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
             />
-            {errors.area && (
-              <p className="mt-1 text-sm text-red-600">{errors.area.message}</p>
+            {errors.area_sqm && (
+              <p className="mt-1 text-sm text-red-600">{errors.area_sqm.message}</p>  
             )}
           </div>
         </div>

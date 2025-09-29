@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, Link } from 'react-router-dom';
+import { useParams, Link, useSearchParams } from 'react-router-dom';
 import { 
   MapPinIcon,
   CalendarDaysIcon,
@@ -20,6 +20,10 @@ import PublicHeader from '@/components/layout/PublicHeader';
 import UserReviewsModal from '@/components/modals/UserReviewsModal';
 import PhotoCarouselModal from '@/components/modals/PhotoCarouselModal';
 import PhotoManagementModal from '@/components/modals/PhotoManagementModal';
+import AllReviewsModal from '@/components/modals/AllReviewsModal';
+import LoginModal from '@/components/modals/LoginModal';
+import RegisterModal from '@/components/modals/RegisterModal';
+import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
 import Map from '@/components/Map';
 import { api } from '@/app/api';
 import toast from 'react-hot-toast';
@@ -62,8 +66,16 @@ const getInitials = (name: string): string => {
     .toUpperCase();
 };
 
+// Helper function to calculate average rating from reviews
+const calculateAverageRating = (reviews: any[]): number => {
+  if (!reviews || reviews.length === 0) return 0;
+  const totalRating = reviews.reduce((sum, review) => sum + review.rating, 0);
+  return Math.round((totalRating / reviews.length) * 10) / 10; // Round to 1 decimal place
+};
+
 const PropertyDetail: React.FC = () => {
   const { id } = useParams<{ id: string }>();
+  const [searchParams] = useSearchParams();
   const { user } = useAuth();
   const [property, setProperty] = useState<Property | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -83,8 +95,8 @@ const PropertyDetail: React.FC = () => {
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
   
   
-  // Edit mode states
-  const [isEditMode, setIsEditMode] = useState(false);
+  // Edit mode states - detectar si viene de la URL con edit=true
+  const [isEditMode, setIsEditMode] = useState(searchParams.get('edit') === 'true');
   const [editingField, setEditingField] = useState<string | null>(null);
   const [editFormData, setEditFormData] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
@@ -95,6 +107,14 @@ const PropertyDetail: React.FC = () => {
   
   // User reviews modal states
   const [showUserReviews, setShowUserReviews] = useState(false);
+  
+  // All reviews modal states
+  const [showAllReviews, setShowAllReviews] = useState(false);
+  
+  // Login modal states
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   
   // Photo carousel modal states
   const [showPhotoCarousel, setShowPhotoCarousel] = useState(false);
@@ -604,13 +624,19 @@ const PropertyDetail: React.FC = () => {
   };
 
   const handleBookNow = () => {
+    // Verificar si el usuario está autenticado
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+    
     if (isOwner) {
       toast.error('No puedes reservar tu propia propiedad');
       return;
     }
     
     if (!checkIn || !checkOut) {
-      alert('Por favor selecciona las fechas de llegada y salida');
+      toast.error('Por favor selecciona las fechas de llegada y salida');
       return;
     }
     setShowBookingModal(true);
@@ -622,6 +648,12 @@ const PropertyDetail: React.FC = () => {
     e.preventDefault();
     
     if (!id) return;
+    
+    // Verificar si el usuario está autenticado
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
     
     if (reviewRating === 0) {
       toast.error('Por favor selecciona una calificación');
@@ -657,10 +689,41 @@ const PropertyDetail: React.FC = () => {
       
     } catch (error: any) {
       console.error('Error submitting review:', error);
-      const errorMessage = error.response?.data?.detail || 'Error al enviar reseña';
-      toast.error(errorMessage);
+      
+      // Manejar errores específicos de autenticación
+      if (error.response?.status === 401 || error.response?.status === 403) {
+        setShowLoginModal(true);
+      } else {
+        const errorMessage = error.response?.data?.detail || 'Error al enviar reseña';
+        toast.error(errorMessage);
+      }
     } finally {
       setIsSubmittingReview(false);
+    }
+  };
+
+  // Handle favorite toggle
+  const handleToggleFavorite = async () => {
+    if (!user) {
+      setShowLoginModal(true);
+      return;
+    }
+
+    try {
+      if (isFavorite) {
+        // Remove from favorites
+        await api.delete(`/favorites/${id}`);
+        setIsFavorite(false);
+        toast.success('Eliminado de favoritos');
+      } else {
+        // Add to favorites
+        await api.post('/favorites', { unit_id: id });
+        setIsFavorite(true);
+        toast.success('Agregado a favoritos');
+      }
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Error al actualizar favoritos');
     }
   };
 
@@ -817,8 +880,8 @@ const PropertyDetail: React.FC = () => {
               <div className="flex items-center space-x-4 text-gray-600">
                 <div className="flex items-center space-x-1">
                   <StarSolidIcon className="h-5 w-5 text-yellow-400" />
-                  <span>{property.rating || 0}</span>
-                  <span>({property.total_reviews || 0} reseñas)</span>
+                  <span>{calculateAverageRating(reviews)}</span>
+                  <span>({reviews.length} reseñas)</span>
                 </div>
                 <div className="flex items-center space-x-1">
                   <MapPinIcon className="h-5 w-5" />
@@ -1506,8 +1569,8 @@ const PropertyDetail: React.FC = () => {
                     )}
                   </div>
                   <button
-                    onClick={() => setIsFavorite(!isFavorite)}
-                    className="p-2 rounded-full hover:bg-gray-100"
+                    onClick={handleToggleFavorite}
+                    className="p-2 rounded-full hover:bg-gray-100 transition-colors"
                   >
                     {isFavorite ? (
                       <HeartSolidIcon className="h-6 w-6 text-red-500" />
@@ -1609,9 +1672,14 @@ const PropertyDetail: React.FC = () => {
                   <>
                 <button
                   onClick={handleBookNow}
-                      className="w-full bg-blue-600 text-white py-2.5 rounded-lg font-semibold hover:bg-blue-700 transition-colors"
+                  className={`w-full py-2.5 rounded-lg font-semibold transition-colors ${
+                    !user 
+                      ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                      : 'bg-blue-600 text-white hover:bg-blue-700'
+                  }`}
+                  disabled={!user}
                 >
-                  Reservar
+                  {!user ? 'Inicia sesión para reservar' : 'Reservar'}
                 </button>
 
                     <p className="text-center text-xs text-gray-500 mt-2">
@@ -1629,50 +1697,75 @@ const PropertyDetail: React.FC = () => {
               {/* Reviews Section - Half width */}
               <div className="bg-white border border-gray-200 rounded-lg p-6 shadow-lg w-full">
                 <div className="flex items-center justify-between mb-6">
-                  <h3 className="text-xl font-semibold text-gray-900">Reseñas ({property.total_reviews || 0})</h3>
-                  {property.rating && property.total_reviews > 0 ? (
+                  <h3 className="text-xl font-semibold text-gray-900">Reseñas ({reviews.length})</h3>
+                  {calculateAverageRating(reviews) > 0 ? (
                     <div className="flex items-center space-x-2">
                       <StarSolidIcon className="h-5 w-5 text-yellow-400" />
-                      <span className="font-semibold">{property.rating}</span>
+                      <span className="font-semibold">{calculateAverageRating(reviews)}</span>
         </div>
                   ) : null}
       </div>
 
                 {/* Reviews List */}
-                <div className="space-y-4 max-h-80 overflow-y-auto">
+                <div className="space-y-4">
                   {isLoadingReviews ? (
                     <div className="text-center py-8">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600 mx-auto"></div>
                       <p className="text-gray-500 mt-2">Cargando reseñas...</p>
                     </div>
                   ) : reviews.length > 0 ? (
-                    reviews.map((review) => (
-                      <div key={review.id} className="border-b border-gray-200 pb-4 last:border-b-0">
-                        <div className="flex items-start space-x-4">
-                          <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                            {review.user_name ? review.user_name[0].toUpperCase() : 'U'}
-                          </div>
-                          <div className="flex-1">
-                            <div className="flex items-center space-x-2 mb-1">
-                              <h4 className="font-semibold text-gray-900">{review.user_name || 'Usuario'}</h4>
-                              <div className="flex items-center">
-                                {[...Array(5)].map((_, i) => (
-                                  <StarSolidIcon key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400' : 'text-gray-300'}`} />
-                                ))}
-                              </div>
-                              {review.is_verified && (
-                                <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Verificado</span>
+                    <>
+                      {/* Mostrar solo las primeras 3 reseñas */}
+                      {reviews.slice(0, 3).map((review) => (
+                        <div key={review.id} className="border-b border-gray-200 pb-4 last:border-b-0">
+                          <div className="flex items-start space-x-4">
+                            <div className="w-10 h-10 rounded-full overflow-hidden bg-blue-600 flex items-center justify-center text-white font-semibold">
+                              {review.user_profile_image ? (
+                                <img
+                                  src={review.user_profile_image}
+                                  alt={review.user_name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                <span>
+                                  {review.user_name ? review.user_name[0].toUpperCase() : 'U'}
+                                </span>
                               )}
                             </div>
-                            {review.title && <h5 className="font-medium text-gray-900 mb-1">{review.title}</h5>}
-                            <p className="text-gray-700 text-sm mb-2">{review.comment}</p>
-                            <p className="text-xs text-gray-500">
-                              {new Date(review.created_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}
-                            </p>
+                            <div className="flex-1">
+                              <div className="flex items-center space-x-2 mb-1">
+                                <h4 className="font-semibold text-gray-900">{review.user_name || 'Usuario'}</h4>
+                                <div className="flex items-center">
+                                  {[...Array(5)].map((_, i) => (
+                                    <StarSolidIcon key={i} className={`h-4 w-4 ${i < review.rating ? 'text-yellow-400' : 'text-gray-300'}`} />
+                                  ))}
+                                </div>
+                                {review.is_verified && (
+                                  <span className="text-xs bg-green-100 text-green-800 px-2 py-1 rounded">Verificado</span>
+                                )}
+                              </div>
+                              {review.title && <h5 className="font-medium text-gray-900 mb-1">{review.title}</h5>}
+                              <p className="text-gray-700 text-sm mb-2">{review.comment}</p>
+                              <p className="text-xs text-gray-500">
+                                {new Date(review.created_at).toLocaleDateString('es-ES', { year: 'numeric', month: 'long', day: 'numeric' })}
+                              </p>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    ))
+                      ))}
+                      
+                      {/* Botón "Mostrar más" si hay más de 3 reseñas */}
+                      {reviews.length > 3 && (
+                        <div className="text-center pt-4">
+                          <button
+                            onClick={() => setShowAllReviews(true)}
+                            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline"
+                          >
+                            Mostrar más
+                          </button>
+                        </div>
+                      )}
+                    </>
                   ) : (
                     <div className="text-center py-8 text-gray-500">
                       <p>Aún no hay reseñas para esta propiedad</p>
@@ -1684,7 +1777,26 @@ const PropertyDetail: React.FC = () => {
                 {/* Add Review Form */}
                 <div className="mt-6 pt-6 border-t">
                   <h4 className="text-lg font-semibold text-gray-900 mb-3">Escribir una reseña</h4>
-                  <form onSubmit={handleSubmitReview} className="space-y-4">
+                  
+                  {/* Mensaje para usuarios no autenticados */}
+                  {!user && (
+                    <div className="mb-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                      <div className="flex items-center">
+                        <div className="flex-shrink-0">
+                          <svg className="h-5 w-5 text-blue-400" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                        <div className="ml-3">
+                          <p className="text-sm text-blue-700">
+                            <strong>Inicia sesión</strong> para poder escribir una reseña y compartir tu experiencia.
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                  
+                  <form onSubmit={handleSubmitReview} className={`space-y-4 ${!user ? 'opacity-50 pointer-events-none' : ''}`}>
                     <div>
                       <label className="block text-sm font-medium text-gray-700 mb-2">Calificación *</label>
                       <div className="flex space-x-1">
@@ -1704,8 +1816,21 @@ const PropertyDetail: React.FC = () => {
                       <textarea value={reviewComment} onChange={(e) => setReviewComment(e.target.value)} rows={4} className="w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Comparte tu experiencia detallada..." required />
                     </div>
                     <div className="flex justify-end">
-                      <button type="submit" disabled={isSubmittingReview || reviewRating === 0 || !reviewComment.trim()} className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                        {isSubmittingReview ? 'Enviando...' : 'Enviar reseña'}
+                      <button 
+                        type="submit" 
+                        disabled={isSubmittingReview || reviewRating === 0 || !reviewComment.trim() || !user} 
+                        className={`px-6 py-2 rounded-lg font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+                          !user 
+                            ? 'bg-gray-400 text-gray-600 cursor-not-allowed' 
+                            : 'bg-blue-600 text-white hover:bg-blue-700'
+                        }`}
+                      >
+                        {!user 
+                          ? 'Inicia sesión para reseñar' 
+                          : isSubmittingReview 
+                            ? 'Enviando...' 
+                            : 'Enviar reseña'
+                        }
                       </button>
                     </div>
                   </form>
@@ -1840,6 +1965,57 @@ const PropertyDetail: React.FC = () => {
           onSetCoverImage={handleSetCoverImage}
           coverImageIndex={coverImageIndex}
           title={`Gestionar Fotos - ${property?.title || 'Propiedad'}`}
+        />
+
+        {/* All Reviews Modal */}
+        <AllReviewsModal
+          isOpen={showAllReviews}
+          onClose={() => setShowAllReviews(false)}
+          unitId={id || ''}
+          totalReviews={property?.total_reviews || 0}
+          averageRating={property?.rating || 0}
+        />
+
+        {/* Login Modal */}
+        <LoginModal
+          isOpen={showLoginModal}
+          onClose={() => setShowLoginModal(false)}
+          onSuccess={() => {
+            // Refresh data after successful login
+            window.location.reload();
+          }}
+          onSwitchToRegister={() => {
+            setShowLoginModal(false);
+            setShowRegisterModal(true);
+          }}
+          onSwitchToForgotPassword={() => {
+            setShowLoginModal(false);
+            setShowForgotPasswordModal(true);
+          }}
+        />
+
+        {/* Register Modal */}
+        <RegisterModal
+          isOpen={showRegisterModal}
+          onClose={() => setShowRegisterModal(false)}
+          onSuccess={() => {
+            // Refresh data after successful registration
+            window.location.reload();
+          }}
+          onSwitchToLogin={() => {
+            setShowRegisterModal(false);
+            setShowLoginModal(true);
+          }}
+        />
+
+        {/* Forgot Password Modal */}
+        <ForgotPasswordModal
+          isOpen={showForgotPasswordModal}
+          onClose={() => setShowForgotPasswordModal(false)}
+          onSwitchToLogin={() => {
+            setShowForgotPasswordModal(false);
+            setShowLoginModal(true);
+          }}
         />
     </div>
     </>

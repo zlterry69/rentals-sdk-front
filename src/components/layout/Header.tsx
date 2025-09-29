@@ -110,10 +110,18 @@ export const Header: React.FC<HeaderProps> = ({ onMobileMenuClick }) => {
           <Menu as="div" className="relative">
             <Menu.Button className="-m-1.5 flex items-center p-1.5">
               <span className="sr-only">Abrir menú de usuario</span>
-              <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
-                <span className="text-sm font-medium text-gray-700">
-                  {user?.full_name?.split(' ').map(name => name[0]).join('').slice(0, 2) || user?.email.slice(0, 2).toUpperCase()}
-                </span>
+              <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+                {user?.profile_image ? (
+                  <img
+                    src={user.profile_image}
+                    alt="Profile"
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <span className="text-sm font-medium text-gray-700">
+                    {user?.full_name?.split(' ').map(name => name[0]).join('').slice(0, 2) || user?.email.slice(0, 2).toUpperCase()}
+                  </span>
+                )}
               </div>
               <span className="hidden lg:flex lg:items-center">
                 <span className="ml-4 text-sm font-semibold leading-6 text-gray-900" aria-hidden="true">

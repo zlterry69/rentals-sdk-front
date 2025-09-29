@@ -6,10 +6,17 @@ import {
   HomeIcon,
   StarIcon,
   HeartIcon,
-  AdjustmentsHorizontalIcon
+  AdjustmentsHorizontalIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import { apiClient } from '@/app/api';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLoginModal } from '@/hooks/useLoginModal';
+import LoginModal from '@/components/modals/LoginModal';
+import RegisterModal from '@/components/modals/RegisterModal';
+import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
 import toast from 'react-hot-toast';
 
 interface Property {
@@ -32,13 +39,30 @@ interface Property {
   images?: string[];
   owner_id: string;
   owner_name?: string;
+  owner_profile_image?: string;
   rating?: number;
   total_reviews: number;
   created_at: string;
   updated_at: string;
+  real_rating?: number;
+  real_total_reviews?: number;
 }
 
 const ExploreRentals: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+  const {
+    showLoginModal,
+    showRegisterModal,
+    showForgotPasswordModal,
+    handleCloseLoginModal,
+    handleSwitchToRegister,
+    handleSwitchToForgotPassword,
+    handleCloseRegisterModal,
+    handleSwitchToLogin,
+    handleCloseForgotPasswordModal,
+    handleSwitchToLoginFromForgot,
+  } = useLoginModal();
+  
   const [properties, setProperties] = useState<Property[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedDistrict, setSelectedDistrict] = useState('all');
@@ -46,56 +70,193 @@ const ExploreRentals: React.FC = () => {
   const [bedrooms, setBedrooms] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
+  
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalProperties, setTotalProperties] = useState(0);
+  const propertiesPerPage = 12;
+
+  // Function to calculate real-time rating for a property
+  const calculatePropertyRating = async (propertyPublicId: string) => {
+    try {
+      const response = await apiClient.get(`/reviews/unit/${propertyPublicId}`);
+      const reviews = response.data || [];
+      
+      if (reviews.length === 0) {
+        return { rating: 0, total_reviews: 0 };
+      }
+      
+      const ratings = reviews.map((review: any) => review.rating).filter((rating: number) => rating > 0);
+      const averageRating = ratings.length > 0 ? Math.round((ratings.reduce((sum: number, rating: number) => sum + rating, 0) / ratings.length) * 10) / 10 : 0;
+      
+      return { rating: averageRating, total_reviews: reviews.length };
+    } catch (error) {
+      console.error('Error fetching reviews for property:', propertyPublicId, error);
+      return { rating: 0, total_reviews: 0 };
+    }
+  };
+
+  // Fetch user favorites
+  const fetchFavorites = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const response = await apiClient.get('/favorites/');
+      const favoritesData = response.data || [];
+      const favoriteIds = favoritesData.map((fav: any) => fav.unit_public_id);
+      setFavorites(favoriteIds);
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    }
+  };
 
   // Fetch properties from backend
   useEffect(() => {
     const fetchProperties = async () => {
       try {
+        setIsLoading(true);
         // Build query parameters
         const params = new URLSearchParams();
         if (selectedDistrict !== 'all') params.append('district_filter', selectedDistrict);
         if (priceRange.min > 0) params.append('min_price', priceRange.min.toString());
         if (priceRange.max < 5000) params.append('max_price', priceRange.max.toString());
         if (bedrooms !== 'all') params.append('bedrooms', bedrooms);
+        
+        // Parámetros de paginación
+        params.append('page', currentPage.toString());
+        params.append('limit', propertiesPerPage.toString());
 
         const response = await apiClient.get(`/units/available?${params.toString()}`);
-        setProperties(response.data);
+        
+        let propertiesData = [];
+        
+        // Si la API devuelve datos paginados
+        if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+          propertiesData = response.data.data || [];
+          setTotalProperties(response.data.total || 0);
+          setTotalPages(response.data.total_pages || 1);
+        } else {
+          // Si la API devuelve un array simple, lo paginamos en el frontend
+          const allProperties = response.data || [];
+          setTotalProperties(allProperties.length);
+          setTotalPages(Math.ceil(allProperties.length / propertiesPerPage));
+          
+          // Aplicar paginación en el frontend
+          const startIndex = (currentPage - 1) * propertiesPerPage;
+          const endIndex = startIndex + propertiesPerPage;
+          propertiesData = allProperties.slice(startIndex, endIndex);
+        }
+        
+        // Calculate real-time ratings for each property
+        const propertiesWithRatings = await Promise.all(
+          propertiesData.map(async (property: Property) => {
+            const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
+            return {
+              ...property,
+              real_rating: rating,
+              real_total_reviews: total_reviews
+            };
+          })
+        );
+        
+        setProperties(propertiesWithRatings);
+        
         setIsLoading(false);
       } catch (error) {
         console.error('Error fetching properties:', error);
         toast.error('Error al cargar propiedades');
         setProperties([]);
+        setTotalProperties(0);
+        setTotalPages(1);
         setIsLoading(false);
       }
     };
 
     fetchProperties();
-  }, [selectedDistrict, priceRange, bedrooms]); // Re-fetch when filters change
+  }, [selectedDistrict, priceRange, bedrooms, currentPage]); // Re-fetch when filters or page change
+
+  // Fetch favorites when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFavorites();
+    } else {
+      setFavorites([]);
+    }
+  }, [isAuthenticated]);
 
   const districts = [
     'Miraflores', 'San Isidro', 'Barranco', 'Lima', 'Santiago de Surco',
     'La Molina', 'San Borja', 'Magdalena', 'Jesús María', 'Lince'
   ];
 
+  // Aplicar filtros de búsqueda local y favoritos
   const filteredProperties = properties.filter(property => {
     const matchesSearch = property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          property.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         property.district.toLowerCase().includes(searchTerm.toLowerCase());
+                         (property.district && property.district.toLowerCase().includes(searchTerm.toLowerCase()));
     
-    const matchesDistrict = selectedDistrict === 'all' || property.district === selectedDistrict;
-    const matchesPrice = property.monthly_rent >= priceRange.min && property.monthly_rent <= priceRange.max;
-    const matchesBedrooms = bedrooms === 'all' || property.bedrooms.toString() === bedrooms;
+    // Favorites filter - only show properties that are in favorites array
+    const matchesFavorites = !showFavoritesOnly || favorites.includes(property.id);
     
-    return matchesSearch && matchesDistrict && matchesPrice && matchesBedrooms && property.status === 'available';
+    return matchesSearch && matchesFavorites && property.status === 'available';
   });
 
-  const toggleFavorite = (propertyId: string) => {
-    setFavorites(prev => 
-      prev.includes(propertyId) 
-        ? prev.filter(id => id !== propertyId)
-        : [...prev, propertyId]
-    );
+  const toggleFavorite = async (propertyId: string) => {
+    if (!isAuthenticated) {
+      handleSwitchToRegister(); // Abrir modal de login
+      return;
+    }
+    
+    try {
+      const response = await apiClient.post('/favorites/toggle', {
+        unit_public_id: propertyId
+      });
+      
+      const { is_favorite } = response.data;
+      
+      setFavorites(prev => 
+        is_favorite 
+          ? [...prev, propertyId]
+          : prev.filter(id => id !== propertyId)
+      );
+      
+      toast.success(is_favorite ? 'Agregado a favoritos' : 'Eliminado de favoritos');
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Error al actualizar favoritos');
+    }
   };
+
+  const toggleFavoritesFilter = () => {
+    const newShowFavoritesOnly = !showFavoritesOnly;
+    setShowFavoritesOnly(newShowFavoritesOnly);
+    setCurrentPage(1); // Reset to first page when filtering
+  };
+
+  // Funciones de paginación
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  // Resetear página cuando cambien los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [selectedDistrict, priceRange, bedrooms]);
 
   if (isLoading) {
     return (
@@ -186,12 +347,32 @@ const ExploreRentals: React.FC = () => {
 
       {/* Results Count */}
       <div className="flex items-center justify-between">
-        <p className="text-gray-600">
-          {filteredProperties.length === 0 
-            ? 'No se encontraron propiedades' 
-            : `${filteredProperties.length} ${filteredProperties.length === 1 ? 'propiedad encontrada' : 'propiedades encontradas'}`
-          }
-        </p>
+        <div>
+          <p className="text-gray-600">
+            {isLoading 
+              ? 'Cargando...' 
+              : filteredProperties.length === 0 
+                ? 'No se encontraron propiedades' 
+                : `Mostrando ${filteredProperties.length} de ${totalProperties} propiedades`
+            }
+          </p>
+          {totalPages > 1 && (
+            <p className="text-sm text-gray-500 mt-1">
+              Página {currentPage} de {totalPages}
+            </p>
+          )}
+        </div>
+        <button 
+          onClick={toggleFavoritesFilter}
+          className={`flex items-center px-4 py-2 rounded-lg transition-colors ${
+            showFavoritesOnly 
+              ? 'bg-red-100 text-red-700 border border-red-200' 
+              : 'text-gray-600 hover:text-gray-800 hover:bg-gray-100'
+          }`}
+        >
+          <HeartIcon className={`h-5 w-5 mr-2 ${showFavoritesOnly ? 'text-red-500' : 'text-gray-400'}`} />
+          Favoritos
+        </button>
         <button className="flex items-center text-gray-600 hover:text-gray-800">
           <AdjustmentsHorizontalIcon className="h-5 w-5 mr-2" />
           Más filtros
@@ -241,7 +422,7 @@ const ExploreRentals: React.FC = () => {
                   <div className="flex items-center">
                     <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
                     <span className="ml-1 text-sm text-gray-600">
-                      {property.rating || 0} ({property.total_reviews})
+                      {property.real_rating || 0} ({property.real_total_reviews || 0})
                     </span>
                   </div>
                 </div>
@@ -264,7 +445,7 @@ const ExploreRentals: React.FC = () => {
                     <p className="text-xl font-bold text-gray-900">
                       S/ {property.monthly_rent.toLocaleString()}
                     </p>
-                    <p className="text-sm text-gray-500">por mes</p>
+                    <p className="text-sm text-gray-500">por noche</p>
                   </div>
                   <Link
                     to={`/properties/${property.public_id}`}
@@ -276,6 +457,69 @@ const ExploreRentals: React.FC = () => {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-2 mt-8">
+          {/* Botón Anterior */}
+          <button
+            onClick={handlePreviousPage}
+            disabled={currentPage === 1}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            <ChevronLeftIcon className="h-4 w-4 mr-1" />
+            Anterior
+          </button>
+
+          {/* Números de página */}
+          <div className="flex space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNumber;
+              if (totalPages <= 5) {
+                pageNumber = i + 1;
+              } else if (currentPage <= 3) {
+                pageNumber = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNumber = totalPages - 4 + i;
+              } else {
+                pageNumber = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNumber}
+                  onClick={() => handlePageChange(pageNumber)}
+                  className={`px-3 py-2 text-sm font-medium rounded-md ${
+                    currentPage === pageNumber
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Botón Siguiente */}
+          <button
+            onClick={handleNextPage}
+            disabled={currentPage === totalPages}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Siguiente
+            <ChevronRightIcon className="h-4 w-4 ml-1" />
+          </button>
         </div>
       )}
 
@@ -304,6 +548,24 @@ const ExploreRentals: React.FC = () => {
           </p>
         </div>
       )}
+
+      {/* Modales de autenticación */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleCloseLoginModal}
+        onSwitchToRegister={handleSwitchToRegister}
+        onSwitchToForgotPassword={handleSwitchToForgotPassword}
+      />
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={handleCloseRegisterModal}
+        onSwitchToLogin={handleSwitchToLogin}
+      />
+      <ForgotPasswordModal
+        isOpen={showForgotPasswordModal}
+        onClose={handleCloseForgotPasswordModal}
+        onSwitchToLogin={handleSwitchToLoginFromForgot}
+      />
     </div>
   );
 };

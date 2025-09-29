@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
@@ -10,7 +11,9 @@ import {
   PencilIcon,
   TrashIcon,
   PhotoIcon,
-  StarIcon
+  StarIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon
 } from '@heroicons/react/24/outline';
 import { apiClient } from '@/app/api';
 import toast from 'react-hot-toast';
@@ -37,6 +40,7 @@ interface Unit {
 }
 
 const Units: React.FC = () => {
+  const navigate = useNavigate();
   const [units, setUnits] = useState<Unit[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
@@ -47,11 +51,17 @@ const Units: React.FC = () => {
   const [viewingUnit, setViewingUnit] = useState<Unit | null>(null);
   const [isViewModalOpen, setIsViewModalOpen] = useState(false);
   const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalUnits, setTotalUnits] = useState(0);
+  const unitsPerPage = 20;
 
   // CRUD functions
   const handleEdit = (unit: Unit) => {
-    setEditingUnit(unit);
-    setIsEditModalOpen(true);
+    // Redirigir a la vista de edición de la propiedad
+    navigate(`/properties/${unit.public_id}?edit=true`);
   };
 
   const handleUpdateUnit = (updatedUnit: any) => {
@@ -96,31 +106,51 @@ const Units: React.FC = () => {
   const fetchUnits = async () => {
     try {
       setIsLoading(true);
-      const response = await apiClient.get('/units');
-      setUnits(response.data);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('page', currentPage.toString());
+      params.append('limit', unitsPerPage.toString());
+      if (statusFilter !== 'all') params.append('status', statusFilter);
+      if (typeFilter !== 'all') params.append('property_type', typeFilter);
+      if (searchTerm) params.append('search', searchTerm);
+
+      const response = await apiClient.get(`/units?${params.toString()}`);
+      
+      // Si la API devuelve datos paginados
+      if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+        setUnits(response.data.data || []);
+        setTotalUnits(response.data.total || 0);
+        setTotalPages(response.data.total_pages || 1);
+      } else {
+        // Si la API devuelve un array simple, lo paginamos en el frontend
+        const allUnits = response.data || [];
+        setTotalUnits(allUnits.length);
+        setTotalPages(Math.ceil(allUnits.length / unitsPerPage));
+        
+        // Aplicar paginación en el frontend
+        const startIndex = (currentPage - 1) * unitsPerPage;
+        const endIndex = startIndex + unitsPerPage;
+        setUnits(allUnits.slice(startIndex, endIndex));
+      }
+      
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching units:', error);
       toast.error('Error al cargar unidades');
       setUnits([]);
+      setTotalUnits(0);
+      setTotalPages(1);
       setIsLoading(false);
     }
   };
 
   useEffect(() => {
     fetchUnits();
-  }, []);
+  }, [currentPage, statusFilter, typeFilter, searchTerm]);
 
-  const filteredUnits = units.filter(unit => {
-    const matchesSearch = unit.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         unit.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         unit.district.toLowerCase().includes(searchTerm.toLowerCase());
-    
-    const matchesStatus = statusFilter === 'all' || unit.status === statusFilter;
-    const matchesType = typeFilter === 'all' || unit.property_type === typeFilter;
-    
-    return matchesSearch && matchesStatus && matchesType;
-  });
+  // Los filtros se aplican en el servidor, solo aplicamos búsqueda local si es necesario
+  const filteredUnits = units;
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -163,10 +193,33 @@ const Units: React.FC = () => {
     }
   };
 
-  const totalUnits = units.length;
+  // Calcular estadísticas de las unidades actuales (página actual)
   const availableUnits = units.filter(u => u.status === 'available').length;
   const occupiedUnits = units.filter(u => u.status === 'occupied').length;
   const totalRevenue = units.filter(u => u.status === 'occupied').reduce((sum, u) => sum + u.monthly_rent, 0);
+
+  // Funciones de paginación
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  // Resetear página cuando cambien los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [statusFilter, typeFilter, searchTerm]);
 
   if (isLoading) {
     return (
@@ -331,6 +384,20 @@ const Units: React.FC = () => {
         </div>
       </div>
 
+      {/* Información de paginación */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white shadow rounded-lg p-4">
+          <div>
+            <p className="text-sm text-gray-600">
+              Mostrando {units.length} de {totalUnits} propiedades
+            </p>
+            <p className="text-xs text-gray-500 mt-1">
+              Página {currentPage} de {totalPages}
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {filteredUnits.map((unit) => (
@@ -391,7 +458,7 @@ const Units: React.FC = () => {
                   <p className="text-lg font-semibold text-gray-900">
                     S/ {unit.monthly_rent.toFixed(2)}
                   </p>
-                  <p className="text-sm text-gray-500">por mes</p>
+                  <p className="text-sm text-gray-500">por noche</p>
                 </div>
                 <div className="flex items-center space-x-2">
                   <button 
@@ -422,6 +489,69 @@ const Units: React.FC = () => {
         ))}
       </div>
 
+      {/* Pagination Controls */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-2 mt-8">
+          {/* Botón Anterior */}
+          <button
+            onClick={handlePreviousPage}
+            disabled={currentPage === 1}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            <ChevronLeftIcon className="h-4 w-4 mr-1" />
+            Anterior
+          </button>
+
+          {/* Números de página */}
+          <div className="flex space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNumber;
+              if (totalPages <= 5) {
+                pageNumber = i + 1;
+              } else if (currentPage <= 3) {
+                pageNumber = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNumber = totalPages - 4 + i;
+              } else {
+                pageNumber = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNumber}
+                  onClick={() => handlePageChange(pageNumber)}
+                  className={`px-3 py-2 text-sm font-medium rounded-md ${
+                    currentPage === pageNumber
+                      ? 'bg-blue-600 text-white'
+                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Botón Siguiente */}
+          <button
+            onClick={handleNextPage}
+            disabled={currentPage === totalPages}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50'
+            }`}
+          >
+            Siguiente
+            <ChevronRightIcon className="h-4 w-4 ml-1" />
+          </button>
+        </div>
+      )}
+
       {filteredUnits.length === 0 && (
         <div className="text-center py-12">
           <HomeModernIcon className="mx-auto h-12 w-12 text-gray-400" />
@@ -436,12 +566,14 @@ const Units: React.FC = () => {
       )}
 
       {/* Edit Modal */}
-      <EditUnitModal
-        isOpen={isEditModalOpen}
-        onClose={handleCloseEditModal}
-        unit={editingUnit}
-        onUpdate={handleUpdateUnit}
-      />
+      {editingUnit && (
+        <EditUnitModal
+          isOpen={isEditModalOpen}
+          onClose={handleCloseEditModal}
+          unit={editingUnit}
+          onUpdate={handleUpdateUnit}
+        />
+      )}
 
       {/* View Modal */}
       <ViewUnitModal

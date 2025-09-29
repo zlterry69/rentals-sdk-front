@@ -12,6 +12,11 @@ import {
 import { HeartIcon as HeartSolidIcon } from '@heroicons/react/24/solid';
 import { api } from '@/app/api';
 import PublicHeader from '@/components/layout/PublicHeader';
+import { useAuth } from '@/contexts/AuthContext';
+import { useLoginModal } from '@/hooks/useLoginModal';
+import LoginModal from '@/components/modals/LoginModal';
+import RegisterModal from '@/components/modals/RegisterModal';
+import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
 import toast from 'react-hot-toast';
 
 interface Property {
@@ -31,9 +36,28 @@ interface Property {
   rating: number;
   total_reviews: number;
   status: string;
+  owner_id: string;
+  owner_name?: string;
+  owner_profile_image?: string;
+  real_rating?: number;
+  real_total_reviews?: number;
 }
 
 const PropertiesList: React.FC = () => {
+  const { user, isAuthenticated } = useAuth();
+  const {
+    showLoginModal,
+    showRegisterModal,
+    showForgotPasswordModal,
+    handleCloseLoginModal,
+    handleSwitchToRegister,
+    handleSwitchToForgotPassword,
+    handleCloseRegisterModal,
+    handleSwitchToLogin,
+    handleCloseForgotPasswordModal,
+    handleSwitchToLoginFromForgot,
+  } = useLoginModal();
+  
   const [searchFilters, setSearchFilters] = useState({
     location: '',
     check_in: '',
@@ -42,15 +66,69 @@ const PropertiesList: React.FC = () => {
   });
   const [showFilters, setShowFilters] = useState(false);
   const [properties, setProperties] = useState<Property[]>([]);
+  const [filteredProperties, setFilteredProperties] = useState<Property[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [favorites, setFavorites] = useState<string[]>([]);
+  const [showFavoritesOnly, setShowFavoritesOnly] = useState(false);
 
-  const toggleFavorite = (propertyId: string) => {
-    setFavorites(prev => 
-      prev.includes(propertyId) 
-        ? prev.filter(id => id !== propertyId)
-        : [...prev, propertyId]
-    );
+  const toggleFavorite = async (propertyId: string) => {
+    if (!isAuthenticated) {
+      handleSwitchToRegister(); // Abrir modal de login
+      return;
+    }
+    
+    try {
+      const response = await api.post('/favorites/toggle', {
+        unit_public_id: propertyId
+      });
+      
+      const { is_favorite } = response.data;
+      
+      setFavorites(prev => 
+        is_favorite 
+          ? [...prev, propertyId]
+          : prev.filter(id => id !== propertyId)
+      );
+      
+      toast.success(is_favorite ? 'Agregado a favoritos' : 'Eliminado de favoritos');
+    } catch (error) {
+      console.error('Error toggling favorite:', error);
+      toast.error('Error al actualizar favoritos');
+    }
+  };
+
+  // Function to calculate real-time rating for a property
+  const calculatePropertyRating = async (propertyPublicId: string) => {
+    try {
+      const response = await api.get(`/reviews/unit/${propertyPublicId}`);
+      const reviews = response.data || [];
+      
+      if (reviews.length === 0) {
+        return { rating: 0, total_reviews: 0 };
+      }
+      
+      const ratings = reviews.map((review: any) => review.rating).filter((rating: number) => rating > 0);
+      const averageRating = ratings.length > 0 ? Math.round((ratings.reduce((sum: number, rating: number) => sum + rating, 0) / ratings.length) * 10) / 10 : 0;
+      
+      return { rating: averageRating, total_reviews: reviews.length };
+    } catch (error) {
+      console.error('Error fetching reviews for property:', propertyPublicId, error);
+      return { rating: 0, total_reviews: 0 };
+    }
+  };
+
+  // Fetch user favorites
+  const fetchFavorites = async () => {
+    if (!isAuthenticated) return;
+    
+    try {
+      const response = await api.get('/favorites/');
+      const favoritesData = response.data || [];
+      const favoriteIds = favoritesData.map((fav: any) => fav.unit_public_id);
+      setFavorites(favoriteIds);
+    } catch (error) {
+      console.error('Error fetching favorites:', error);
+    }
   };
 
   // Fetch properties from backend
@@ -59,11 +137,27 @@ const PropertiesList: React.FC = () => {
       try {
         setIsLoading(true);
         const response = await api.get('/units/available');
-        setProperties(response.data || []);
+        const propertiesData = response.data || [];
+        
+        // Calculate real-time ratings for each property
+        const propertiesWithRatings = await Promise.all(
+          propertiesData.map(async (property: Property) => {
+            const { rating, total_reviews } = await calculatePropertyRating(property.public_id);
+            return {
+              ...property,
+              real_rating: rating,
+              real_total_reviews: total_reviews
+            };
+          })
+        );
+        
+        setProperties(propertiesWithRatings);
+        setFilteredProperties(propertiesWithRatings);
       } catch (error) {
         console.error('Error fetching properties:', error);
         toast.error('Error al cargar propiedades');
         setProperties([]);
+        setFilteredProperties([]);
       } finally {
         setIsLoading(false);
       }
@@ -72,9 +166,77 @@ const PropertiesList: React.FC = () => {
     fetchProperties();
   }, []);
 
+  // Fetch favorites when user is authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      fetchFavorites();
+    } else {
+      setFavorites([]);
+    }
+  }, [isAuthenticated]);
+
+  // Filter properties based on search criteria
+  const filterProperties = (propertiesToFilter: Property[]) => {
+    return propertiesToFilter.filter(property => {
+      // Location filter
+      if (searchFilters.location && !property.address.toLowerCase().includes(searchFilters.location.toLowerCase())) {
+        return false;
+      }
+      
+      // Favorites filter
+      if (showFavoritesOnly && !favorites.includes(property.public_id)) {
+        return false;
+      }
+      
+      return true;
+    });
+  };
+
   const handleSearch = () => {
-    // Implement search logic
-    console.log('Searching with filters:', searchFilters);
+    const filtered = filterProperties(properties);
+    setFilteredProperties(filtered);
+  };
+
+  const handleLocationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const location = e.target.value;
+    setSearchFilters(prev => ({ ...prev, location }));
+    
+    // Real-time search as user types - respect both location and favorites filter
+    const filtered = properties.filter(property => {
+      // Location filter
+      if (location && !property.address.toLowerCase().includes(location.toLowerCase())) {
+        return false;
+      }
+      
+      // Favorites filter
+      if (showFavoritesOnly && !favorites.includes(property.public_id)) {
+        return false;
+      }
+      
+      return true;
+    });
+    setFilteredProperties(filtered);
+  };
+
+  const toggleFavoritesFilter = () => {
+    const newShowFavoritesOnly = !showFavoritesOnly;
+    setShowFavoritesOnly(newShowFavoritesOnly);
+    
+    // Filter immediately based on current favorites state
+    const filtered = properties.filter(property => {
+      // Location filter
+      if (searchFilters.location && !property.address.toLowerCase().includes(searchFilters.location.toLowerCase())) {
+        return false;
+      }
+      
+      // Favorites filter - only show properties that are in favorites array
+      if (newShowFavoritesOnly && !favorites.includes(property.public_id)) {
+        return false;
+      }
+      
+      return true;
+    });
+    setFilteredProperties(filtered);
   };
 
   return (
@@ -97,7 +259,7 @@ const PropertiesList: React.FC = () => {
                   type="text"
                   placeholder="Buscar destino"
                   value={searchFilters.location}
-                  onChange={(e) => setSearchFilters(prev => ({ ...prev, location: e.target.value }))}
+                  onChange={handleLocationChange}
                   className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
               </div>
@@ -170,15 +332,32 @@ const PropertiesList: React.FC = () => {
 
           {/* Filters Toggle */}
           <div className="mt-4 flex items-center justify-between">
-            <button
-              onClick={() => setShowFilters(!showFilters)}
-              className="flex items-center space-x-2 text-gray-700 hover:text-blue-600"
-            >
-              <FunnelIcon className="h-5 w-5" />
-              <span>Filtros</span>
-            </button>
+            <div className="flex items-center space-x-4">
+              <button
+                onClick={() => setShowFilters(!showFilters)}
+                className="flex items-center space-x-2 text-gray-700 hover:text-blue-600"
+              >
+                <FunnelIcon className="h-5 w-5" />
+                <span>Filtros</span>
+              </button>
+              
+              {/* Favorites Filter */}
+              {isAuthenticated && (
+                <button
+                  onClick={toggleFavoritesFilter}
+                  className={`flex items-center space-x-2 px-3 py-1 rounded-full text-sm ${
+                    showFavoritesOnly 
+                      ? 'bg-red-100 text-red-700 border border-red-200' 
+                      : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
+                  }`}
+                >
+                  <HeartSolidIcon className="h-4 w-4" />
+                  <span>Favoritos</span>
+                </button>
+              )}
+            </div>
             <div className="text-sm text-gray-600">
-              {properties.length} propiedades encontradas
+              {filteredProperties.length} propiedades encontradas
             </div>
           </div>
         </div>
@@ -190,9 +369,9 @@ const PropertiesList: React.FC = () => {
           <div className="flex items-center justify-center min-h-[400px]">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
           </div>
-        ) : properties.length > 0 ? (
+        ) : filteredProperties.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {properties.map((property) => (
+            {filteredProperties.map((property) => (
             <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
               {/* Property Image */}
               <div className="relative">
@@ -221,8 +400,8 @@ const PropertiesList: React.FC = () => {
                   </h3>
                   <div className="flex items-center space-x-1">
                     <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
-                    <span className="text-sm text-gray-600">{property.rating || 0}</span>
-                    <span className="text-sm text-gray-500">({property.total_reviews || 0})</span>
+                    <span className="text-sm text-gray-600">{property.real_rating || 0}</span>
+                    <span className="text-sm text-gray-500">({property.real_total_reviews || 0})</span>
                   </div>
                 </div>
 
@@ -242,7 +421,7 @@ const PropertiesList: React.FC = () => {
                     <div className="text-lg font-semibold text-gray-900">
                       S/ {property.monthly_rent.toLocaleString()}
                     </div>
-                    <div className="text-sm text-gray-500">por mes</div>
+                    <div className="text-sm text-gray-500">por noche</div>
                   </div>
                 </div>
 
@@ -263,13 +442,36 @@ const PropertiesList: React.FC = () => {
                 <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
               </svg>
             </div>
-            <h3 className="mt-4 text-lg font-medium text-gray-900">No hay propiedades disponibles</h3>
+            <h3 className="mt-4 text-lg font-medium text-gray-900">
+              {showFavoritesOnly ? 'No tienes propiedades favoritas' : 'No hay propiedades disponibles'}
+            </h3>
             <p className="mt-2 text-sm text-gray-500 max-w-sm mx-auto">
-              Actualmente no hay propiedades disponibles para alquilar. ¡Vuelve pronto para ver nuevas opciones!
+              {showFavoritesOnly 
+                ? 'Agrega propiedades a tus favoritos haciendo clic en el corazón para verlas aquí.'
+                : 'No se encontraron propiedades que coincidan con tu búsqueda. ¡Intenta con otros filtros!'
+              }
             </p>
           </div>
         )}
       </div>
+
+      {/* Modales de autenticación */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleCloseLoginModal}
+        onSwitchToRegister={handleSwitchToRegister}
+        onSwitchToForgotPassword={handleSwitchToForgotPassword}
+      />
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={handleCloseRegisterModal}
+        onSwitchToLogin={handleSwitchToLogin}
+      />
+      <ForgotPasswordModal
+        isOpen={showForgotPasswordModal}
+        onClose={handleCloseForgotPasswordModal}
+        onSwitchToLogin={handleSwitchToLoginFromForgot}
+      />
     </div>
   );
 };

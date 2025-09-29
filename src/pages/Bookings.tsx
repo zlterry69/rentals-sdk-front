@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { CalendarIcon, MapPinIcon, CurrencyDollarIcon, ClockIcon } from '@heroicons/react/24/outline';
+import { CalendarIcon, MapPinIcon, CurrencyDollarIcon, ClockIcon, ChevronLeftIcon, ChevronRightIcon } from '@heroicons/react/24/outline';
 import { useAuth } from '@/contexts/AuthContext';
 import { api } from '@/app/api';
 import { toast } from 'react-hot-toast';
@@ -32,20 +32,51 @@ const Bookings: React.FC = () => {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [filter, setFilter] = useState<string>('all');
+  
+  // Estados para paginación
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [totalBookings, setTotalBookings] = useState(0);
+  const bookingsPerPage = 20;
 
   useEffect(() => {
     fetchBookings();
-  }, []);
+  }, [currentPage, filter]);
 
   const fetchBookings = async () => {
     try {
       setIsLoading(true);
-      const response = await api.get('/bookings/my-bookings');
-      setBookings(response.data || []);
+      
+      // Build query parameters
+      const params = new URLSearchParams();
+      params.append('page', currentPage.toString());
+      params.append('limit', bookingsPerPage.toString());
+      if (filter !== 'all') params.append('status', filter);
+
+      const response = await api.get(`/bookings/my-bookings?${params.toString()}`);
+      
+      // Si la API devuelve datos paginados
+      if (response.data && typeof response.data === 'object' && 'data' in response.data) {
+        setBookings(response.data.data || []);
+        setTotalBookings(response.data.total || 0);
+        setTotalPages(response.data.total_pages || 1);
+      } else {
+        // Si la API devuelve un array simple, lo paginamos en el frontend
+        const allBookings = response.data || [];
+        setTotalBookings(allBookings.length);
+        setTotalPages(Math.ceil(allBookings.length / bookingsPerPage));
+        
+        // Aplicar paginación en el frontend
+        const startIndex = (currentPage - 1) * bookingsPerPage;
+        const endIndex = startIndex + bookingsPerPage;
+        setBookings(allBookings.slice(startIndex, endIndex));
+      }
     } catch (error) {
       console.error('Error fetching bookings:', error);
       toast.error('Error al cargar las reservas');
       setBookings([]);
+      setTotalBookings(0);
+      setTotalPages(1);
     } finally {
       setIsLoading(false);
     }
@@ -81,9 +112,31 @@ const Bookings: React.FC = () => {
     }
   };
 
-  const filteredBookings = bookings.filter(booking => 
-    filter === 'all' || booking.status === filter
-  );
+  // Los filtros se aplican en el servidor
+  const filteredBookings = bookings;
+
+  // Funciones de paginación
+  const handlePageChange = (page: number) => {
+    setCurrentPage(page);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handlePreviousPage = () => {
+    if (currentPage > 1) {
+      handlePageChange(currentPage - 1);
+    }
+  };
+
+  const handleNextPage = () => {
+    if (currentPage < totalPages) {
+      handlePageChange(currentPage + 1);
+    }
+  };
+
+  // Resetear página cuando cambien los filtros
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filter]);
 
   const formatDate = (dateString: string) => {
     return new Date(dateString).toLocaleDateString('es-PE', {
@@ -137,6 +190,20 @@ const Bookings: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Información de paginación */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-between bg-white dark:bg-gray-800 shadow rounded-lg p-4">
+          <div>
+            <p className="text-sm text-gray-600 dark:text-gray-300">
+              Mostrando {bookings.length} de {totalBookings} reservas
+            </p>
+            <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+              Página {currentPage} de {totalPages}
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Bookings List */}
       {filteredBookings.length > 0 ? (
@@ -232,6 +299,69 @@ const Bookings: React.FC = () => {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Pagination Controls */}
+      {!isLoading && totalPages > 1 && (
+        <div className="flex items-center justify-center space-x-2 mt-8">
+          {/* Botón Anterior */}
+          <button
+            onClick={handlePreviousPage}
+            disabled={currentPage === 1}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === 1
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
+            }`}
+          >
+            <ChevronLeftIcon className="h-4 w-4 mr-1" />
+            Anterior
+          </button>
+
+          {/* Números de página */}
+          <div className="flex space-x-1">
+            {Array.from({ length: Math.min(5, totalPages) }, (_, i) => {
+              let pageNumber;
+              if (totalPages <= 5) {
+                pageNumber = i + 1;
+              } else if (currentPage <= 3) {
+                pageNumber = i + 1;
+              } else if (currentPage >= totalPages - 2) {
+                pageNumber = totalPages - 4 + i;
+              } else {
+                pageNumber = currentPage - 2 + i;
+              }
+
+              return (
+                <button
+                  key={pageNumber}
+                  onClick={() => handlePageChange(pageNumber)}
+                  className={`px-3 py-2 text-sm font-medium rounded-md ${
+                    currentPage === pageNumber
+                      ? 'bg-primary-600 text-white'
+                      : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
+                  }`}
+                >
+                  {pageNumber}
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Botón Siguiente */}
+          <button
+            onClick={handleNextPage}
+            disabled={currentPage === totalPages}
+            className={`flex items-center px-3 py-2 text-sm font-medium rounded-md ${
+              currentPage === totalPages
+                ? 'text-gray-400 cursor-not-allowed'
+                : 'text-gray-700 bg-white border border-gray-300 hover:bg-gray-50 dark:bg-gray-800 dark:text-gray-300 dark:border-gray-600 dark:hover:bg-gray-700'
+            }`}
+          >
+            Siguiente
+            <ChevronRightIcon className="h-4 w-4 ml-1" />
+          </button>
         </div>
       )}
     </div>

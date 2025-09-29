@@ -1,4 +1,4 @@
-import React, { Fragment } from 'react';
+import React, { Fragment, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { Menu, Transition } from '@headlessui/react';
@@ -7,9 +7,15 @@ import {
 } from '@heroicons/react/24/outline';
 import { ChevronDownIcon } from '@heroicons/react/20/solid';
 import { classNames } from '@/utils/classNames';
+import LoginModal from '@/components/modals/LoginModal';
+import RegisterModal from '@/components/modals/RegisterModal';
+import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
 
 const PublicHeader: React.FC = () => {
   const { user, isAuthenticated, logout } = useAuth();
+  const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showRegisterModal, setShowRegisterModal] = useState(false);
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
 
   const handleLogout = () => {
     logout();
@@ -45,10 +51,18 @@ const PublicHeader: React.FC = () => {
                 <Menu as="div" className="relative">
                   <Menu.Button className="flex items-center text-sm rounded-full focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500">
                     <span className="sr-only">Abrir menú de usuario</span>
-                    <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
-                      <span className="text-sm font-medium text-gray-700">
-                        {user.full_name?.split(' ').map(name => name[0]).join('').slice(0, 2) || user.email.slice(0, 2).toUpperCase()}
-                      </span>
+                    <div className="h-8 w-8 rounded-full overflow-hidden bg-gray-300 flex items-center justify-center">
+                      {user.profile_image ? (
+                        <img
+                          src={user.profile_image}
+                          alt="Profile"
+                          className="h-full w-full object-cover"
+                        />
+                      ) : (
+                        <span className="text-sm font-medium text-gray-700">
+                          {user.full_name?.split(' ').map(name => name[0]).join('').slice(0, 2) || user.email.slice(0, 2).toUpperCase()}
+                        </span>
+                      )}
                     </div>
                     <span className="hidden lg:flex lg:items-center lg:ml-3">
                       <span className="text-sm font-medium text-gray-900">
@@ -127,16 +141,58 @@ const PublicHeader: React.FC = () => {
               </div>
             ) : (
               // Usuario no logueado - mostrar botón de login
-              <Link
-                to="/login"
-                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700"
+              <button
+                onClick={() => setShowLoginModal(true)}
+                className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
               >
                 Iniciar Sesión
-              </Link>
+              </button>
             )}
           </div>
         </div>
       </div>
+      
+      {/* Login Modal */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={() => setShowLoginModal(false)}
+        onSuccess={() => {
+          // Refresh page after successful login
+          window.location.reload();
+        }}
+        onSwitchToRegister={() => {
+          setShowLoginModal(false);
+          setShowRegisterModal(true);
+        }}
+        onSwitchToForgotPassword={() => {
+          setShowLoginModal(false);
+          setShowForgotPasswordModal(true);
+        }}
+      />
+
+      {/* Register Modal */}
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={() => setShowRegisterModal(false)}
+        onSuccess={() => {
+          // Refresh page after successful registration
+          window.location.reload();
+        }}
+        onSwitchToLogin={() => {
+          setShowRegisterModal(false);
+          setShowLoginModal(true);
+        }}
+      />
+
+      {/* Forgot Password Modal */}
+      <ForgotPasswordModal
+        isOpen={showForgotPasswordModal}
+        onClose={() => setShowForgotPasswordModal(false)}
+        onSwitchToLogin={() => {
+          setShowForgotPasswordModal(false);
+          setShowLoginModal(true);
+        }}
+      />
     </header>
   );
 };

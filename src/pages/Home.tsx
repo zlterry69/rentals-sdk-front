@@ -13,6 +13,10 @@ import {
 } from '@heroicons/react/24/outline';
 import PublicHeader from '@/components/layout/PublicHeader';
 import { useAuth } from '@/contexts/AuthContext';
+import { useLoginModal } from '@/hooks/useLoginModal';
+import LoginModal from '@/components/modals/LoginModal';
+import RegisterModal from '@/components/modals/RegisterModal';
+import ForgotPasswordModal from '@/components/modals/ForgotPasswordModal';
 import { api } from '@/app/api';
 
 interface Property {
@@ -32,10 +36,26 @@ interface Property {
   rating: number;
   total_reviews: number;
   status: string;
+  owner_id: string;
+  owner_name?: string;
+  owner_profile_image?: string;
 }
 
 const Home: React.FC = () => {
   const { isAuthenticated, user } = useAuth();
+  const {
+    showLoginModal,
+    showRegisterModal,
+    showForgotPasswordModal,
+    handleCloseLoginModal,
+    handleSwitchToRegister,
+    handleSwitchToForgotPassword,
+    handleCloseRegisterModal,
+    handleSwitchToLogin,
+    handleCloseForgotPasswordModal,
+    handleSwitchToLoginFromForgot,
+  } = useLoginModal();
+  
   const [featuredProperties, setFeaturedProperties] = useState<Property[]>([]);
   const [isLoadingProperties, setIsLoadingProperties] = useState(true);
 
@@ -291,7 +311,7 @@ const Home: React.FC = () => {
               <div className="space-y-4">
                 <div className="flex items-center">
                   <CheckCircleIcon className="h-6 w-6 text-green-500 mr-3" />
-                  <span className="text-gray-700">Gana hasta $3,000 USD por mes</span>
+                  <span className="text-gray-700">Gana hasta $3,000 USD por noche</span>
                 </div>
                 <div className="flex items-center">
                   <CheckCircleIcon className="h-6 w-6 text-green-500 mr-3" />
@@ -352,13 +372,13 @@ const Home: React.FC = () => {
             Únete a la mejor plataforma de alquileres en el Perú
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <Link
-              to="/register"
+            <button
+              onClick={handleSwitchToRegister}
               className="inline-flex items-center bg-white text-blue-600 px-8 py-3 rounded-lg text-lg font-semibold hover:bg-gray-100 transition-colors"
             >
               Crear Cuenta Gratis
               <ArrowRightIcon className="ml-2 h-5 w-5" />
-            </Link>
+            </button>
             <Link
               to="/properties"
               className="inline-flex items-center border-2 border-white text-white px-8 py-3 rounded-lg text-lg font-semibold hover:bg-white hover:text-blue-600 transition-colors"
@@ -394,7 +414,7 @@ const Home: React.FC = () => {
                   </>
                 ) : (
                   <>
-                    <li><Link to="/login" className="text-gray-400 hover:text-white">Iniciar Sesión</Link></li>
+                    <li><button onClick={() => window.dispatchEvent(new CustomEvent('showLoginModal'))} className="text-gray-400 hover:text-white">Iniciar Sesión</button></li>
                     <li><Link to="/register" className="text-gray-400 hover:text-white">Registrarse</Link></li>
                   </>
                 )}
@@ -414,6 +434,24 @@ const Home: React.FC = () => {
           </div>
         </div>
       </footer>
+
+      {/* Modales de autenticación */}
+      <LoginModal
+        isOpen={showLoginModal}
+        onClose={handleCloseLoginModal}
+        onSwitchToRegister={handleSwitchToRegister}
+        onSwitchToForgotPassword={handleSwitchToForgotPassword}
+      />
+      <RegisterModal
+        isOpen={showRegisterModal}
+        onClose={handleCloseRegisterModal}
+        onSwitchToLogin={handleSwitchToLogin}
+      />
+      <ForgotPasswordModal
+        isOpen={showForgotPasswordModal}
+        onClose={handleCloseForgotPasswordModal}
+        onSwitchToLogin={handleSwitchToLoginFromForgot}
+      />
     </div>
   );
 };
