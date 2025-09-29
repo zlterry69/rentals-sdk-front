@@ -4,10 +4,22 @@ import { toast } from 'react-hot-toast';
 import { apiClient } from '@/app/api';
 import { useAuth } from '@/contexts/AuthContext';
 
+interface PaymentMethod {
+  id: string;
+  name: string;
+  payment_type: string;
+  code?: string;
+  description?: string;
+  type?: string;
+  icon_url?: string;
+}
+
 interface CreateLeaseModalProps {
   isOpen: boolean;
   onClose: () => void;
   onLeaseCreated: () => void;
+  paymentMethods?: PaymentMethod[];
+  paymentMethodsLoading?: boolean;
 }
 
 interface Property {
@@ -40,7 +52,7 @@ interface CreateLeaseForm {
   rent_amount: number;
   total_days: number;
   total_amount: number;
-  payment_method: string;
+  payment_method: string; // Solo un método seleccionado
   notes: string;
   contract_document: File | null;
   expenses: ExpenseItem[];
@@ -53,16 +65,13 @@ interface ExpenseItem {
   isEditing?: boolean;
 }
 
-interface PaymentMethod {
-  id: string;
-  payment_type: string;
-  account_details: any;
-}
 
 export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
   isOpen,
   onClose,
-  onLeaseCreated
+  onLeaseCreated,
+  paymentMethods: propPaymentMethods = [],
+  paymentMethodsLoading = false
 }) => {
   const { user: currentUser } = useAuth();
   const [formData, setFormData] = useState<CreateLeaseForm>({
@@ -109,9 +118,14 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
     if (isOpen && currentUser) {
       fetchUserProperties();
       fetchTenants();
-      fetchPaymentMethods();
+      // Usar métodos de pago pasados como prop o cargar si no están disponibles
+      if (propPaymentMethods.length > 0) {
+        setPaymentMethods(propPaymentMethods);
+      } else {
+        fetchPaymentMethods();
+      }
     }
-  }, [isOpen, currentUser]);
+  }, [isOpen, currentUser, propPaymentMethods]);
 
   const fetchUserProperties = async () => {
     try {
@@ -145,71 +159,33 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
 
   const fetchPaymentMethods = async () => {
     try {
-      const response = await apiClient.get('/payment-accounts');
-      const paymentAccount = response.data;
+      // Obtener métodos de pago disponibles de la tabla payment_methods
+      const response = await apiClient.get('/invoices/payment-methods?active_only=true');
+      const availableMethods = response.data;
       
-      // Crear array de métodos de pago basado en los que acepta el usuario
+      // Crear array de métodos de pago
       const methods = [];
       
       // Siempre agregar efectivo
       methods.push({
         id: 'cash',
         payment_type: 'cash',
-        account_details: { method: 'cash', description: 'Pago en efectivo' }
+        name: 'Efectivo',
+        description: 'Pago en efectivo',
+        type: 'traditional'
       });
       
-      // Agregar otros métodos si están habilitados
-      if (paymentAccount) {
-        if (paymentAccount.accepts_yape && paymentAccount.yape_number) {
-          methods.push({
-            id: 'yape',
-            payment_type: 'yape',
-            account_details: { method: 'yape', description: `Yape: ${paymentAccount.yape_number}` }
-          });
-        }
-        if (paymentAccount.accepts_plin && paymentAccount.plin_number) {
-          methods.push({
-            id: 'plin',
-            payment_type: 'plin',
-            account_details: { method: 'plin', description: `Plin: ${paymentAccount.plin_number}` }
-          });
-        }
-        if (paymentAccount.accepts_visa) {
-          methods.push({
-            id: 'visa',
-            payment_type: 'visa',
-            account_details: { method: 'visa', description: 'Visa' }
-          });
-        }
-        if (paymentAccount.accepts_mastercard) {
-          methods.push({
-            id: 'mastercard',
-            payment_type: 'mastercard',
-            account_details: { method: 'mastercard', description: 'Mastercard' }
-          });
-        }
-        if (paymentAccount.accepts_bcp && paymentAccount.bank_account) {
-          methods.push({
-            id: 'bcp',
-            payment_type: 'bcp',
-            account_details: { method: 'bcp', description: `BCP: ${paymentAccount.bank_account}` }
-          });
-        }
-        if (paymentAccount.accepts_interbank && paymentAccount.bank_account) {
-          methods.push({
-            id: 'interbank',
-            payment_type: 'interbank',
-            account_details: { method: 'interbank', description: `Interbank: ${paymentAccount.bank_account}` }
-          });
-        }
-        if (paymentAccount.accepts_scotiabank && paymentAccount.bank_account) {
-          methods.push({
-            id: 'scotiabank',
-            payment_type: 'scotiabank',
-            account_details: { method: 'scotiabank', description: `Scotiabank: ${paymentAccount.bank_account}` }
-          });
-        }
-      }
+      // Agregar métodos de la tabla payment_methods
+      availableMethods.forEach((method: any) => {
+        methods.push({
+          id: method.public_id,
+          payment_type: method.code,
+          name: method.name,
+          description: method.description,
+          type: method.type,
+          icon_url: method.icon_url
+        });
+      });
       
       setPaymentMethods(methods);
     } catch (error) {
@@ -218,7 +194,9 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
       setPaymentMethods([{
         id: 'cash',
         payment_type: 'cash',
-        account_details: { method: 'cash', description: 'Pago en efectivo' }
+        name: 'Efectivo',
+        description: 'Pago en efectivo',
+        type: 'traditional'
       }]);
     }
   };
@@ -263,18 +241,22 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
 
     const start = new Date(formData.start_date);
     const end = new Date(formData.end_date);
+    
+    // Asegurar que las fechas estén en la zona horaria local
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    
     const diffTime = end.getTime() - start.getTime();
     const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24)) + 1; // +1 para incluir el día de inicio
 
+
     let totalAmount = 0;
     if (formData.rent_frequency === 'monthly') {
-      // Para frecuencia mensual, calcular basado en días exactos
-      const dailyRate = formData.rent_amount / 30; // Asumiendo 30 días por mes
-      totalAmount = diffDays * dailyRate;
+      // Para frecuencia mensual, usar el monto mensual directamente
+      totalAmount = formData.rent_amount;
     } else if (formData.rent_frequency === 'yearly') {
-      // Para frecuencia anual, calcular basado en días exactos
-      const dailyRate = formData.rent_amount / 365; // Asumiendo 365 días por año
-      totalAmount = diffDays * dailyRate;
+      // Para frecuencia anual, usar el monto anual directamente
+      totalAmount = formData.rent_amount;
     }
 
     setFormData(prev => ({
@@ -396,6 +378,7 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
       setIsLoading(false);
     }
   };
+
 
   const handleClose = () => {
     // Limpiar vista previa si existe
@@ -672,57 +655,92 @@ export const CreateLeaseModal: React.FC<CreateLeaseModalProps> = ({
             </div>
 
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
                 Método de Pago
               </label>
-              <select
-                value={formData.payment_method}
-                onChange={(e) => handleInputChange('payment_method', e.target.value)}
-                className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-md shadow-sm focus:outline-none focus:ring-2 focus:ring-primary-500 focus:border-primary-500 dark:bg-gray-700 dark:text-white"
-              >
-                {paymentMethods.map((method) => (
-                  <option key={method.id} value={method.payment_type}>
-                    {method.account_details?.description || method.payment_type}
-                  </option>
-                ))}
-              </select>
+              <div className="bg-gray-50 dark:bg-gray-800 rounded-lg p-2">
+                {paymentMethodsLoading ? (
+                  <div className="flex items-center justify-center py-8">
+                    <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+                    <span className="ml-2 text-gray-600 dark:text-gray-400">Cargando métodos de pago...</span>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-4 gap-1">
+                    {paymentMethods.map((method) => {
+                    const methodCode = method.code || method.payment_type;
+                    const isSelected = formData.payment_method === methodCode;
+                    return (
+                      <label 
+                        key={`${method.id}-${isSelected}`} 
+                        className={`flex flex-col items-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded border-2 transition-colors ${
+                          isSelected 
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 
+                            : 'border-transparent hover:border-blue-300'
+                        }`}
+                        title={method.name}
+                      >
+                        <div className="relative">
+                          <input
+                            type="radio"
+                            name="payment_method"
+                            value={methodCode}
+                            checked={isSelected}
+                            onChange={(e) => {
+                              handleInputChange('payment_method', e.target.value);
+                            }}
+                            className="sr-only"
+                          />
+                          <div 
+                            className={`h-4 w-4 rounded-full border-2 mb-1 flex items-center justify-center cursor-pointer ${
+                              isSelected 
+                                ? 'border-green-600 bg-green-600' 
+                                : 'border-gray-300 bg-white hover:border-green-400'
+                            }`}
+                            onClick={() => {
+                              handleInputChange('payment_method', methodCode);
+                            }}
+                          >
+                            {isSelected && (
+                              <div className="h-2 w-2 rounded-full bg-white"></div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center justify-center">
+                          {method.icon_url ? (
+                            <img src={method.icon_url} alt={method.name} className="h-6 w-auto" />
+                          ) : methodCode === 'bitcoin' ? (
+                            <div className="h-6 w-6 bg-orange-500 rounded-full flex items-center justify-center">
+                              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M23.638 14.904c-1.602 6.43-8.113 10.34-14.542 8.736C2.67 22.05-1.244 15.525.362 9.105 1.962 2.67 8.475-1.243 14.9.358c6.43 1.605 10.342 8.115 8.738 14.546z"/>
+                                <path d="M17.027 9.545c.074-1.5-.74-2.3-2.002-2.83l.41-1.64-1-.25-.4 1.6c-.263-.066-.533-.128-.808-.19l.402-1.61-.999-.25-.41 1.64c-.219-.05-.434-.1-.642-.152l.001-.004-1.35-.338-.26 1.04s.72.165.705.175c.393.098.464.357.452.563l-1.135 4.54c-.034.085-.12.212-.314.164.007.01-.705-.176-.705-.176l-.48 1.12 1.26.315c.234.058.463.12.686.178l-.41 1.64 1 .25.41-1.64c.273.074.536.142.792.206l-.41 1.64 1 .25.41-1.64c1.12.212 1.96.127 2.315-.877.28-.79.14-1.24-.59-1.84.42-.097.736-.373.82-.944zm-2.1 3.1c-.2.8-1.58.368-2.025.26l.36-1.44c.445.11 1.87.064 1.665.18zm.2-3.12c-.18.72-1.29.355-1.65.265l.327-1.31c.36.09 1.52.04 1.323.045z"/>
+                              </svg>
+                            </div>
+                          ) : methodCode === 'cash' ? (
+                            <div className="h-6 w-6 bg-green-500 rounded-full flex items-center justify-center">
+                              <svg className="h-4 w-4 text-white" viewBox="0 0 24 24" fill="currentColor">
+                                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/>
+                              </svg>
+                            </div>
+                          ) : (
+                            <div className="h-6 w-6 bg-gray-400 rounded-full flex items-center justify-center">
+                              <span className="text-white text-xs font-bold">?</span>
+                            </div>
+                          )}
+                        </div>
+                      </label>
+                    );
+                  })}
+                  </div>
+                )}
+        {formData.payment_method && (
+          <div className="mt-2 text-xs text-gray-500 dark:text-gray-400 text-center">
+            {paymentMethods.find(m => (m.code || m.payment_type) === formData.payment_method)?.name || formData.payment_method}
+          </div>
+        )}
+              </div>
             </div>
           </div>
 
-          {/* Resumen de Cálculos */}
-          {(formData.total_days > 0 || formData.total_amount > 0) && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 p-4 rounded-lg">
-              <h4 className="text-sm font-medium text-blue-900 dark:text-blue-100 mb-2">
-                Resumen del Contrato
-              </h4>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
-                <div>
-                  <span className="text-blue-700 dark:text-blue-300">Duración:</span>
-                  <p className="font-medium text-blue-900 dark:text-blue-100">
-                    {formData.total_days} días
-                  </p>
-                </div>
-                <div>
-                  <span className="text-blue-700 dark:text-blue-300">Monto {formData.rent_frequency === 'monthly' ? 'mensual' : 'anual'}:</span>
-                  <p className="font-medium text-blue-900 dark:text-blue-100">
-                    S/ {formData.rent_amount.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-blue-700 dark:text-blue-300">Total estimado:</span>
-                  <p className="font-medium text-blue-900 dark:text-blue-100">
-                    S/ {formData.total_amount.toFixed(2)}
-                  </p>
-                </div>
-                <div>
-                  <span className="text-blue-700 dark:text-blue-300">Método de Pago:</span>
-                  <p className="font-medium text-blue-900 dark:text-blue-100">
-                    {paymentMethods.find(m => m.payment_type === formData.payment_method)?.account_details?.description || formData.payment_method}
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
 
           {/* Gastos de la Propiedad */}
           <div>

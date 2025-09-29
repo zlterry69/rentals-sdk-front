@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   MagnifyingGlassIcon,
   MapPinIcon,
@@ -44,6 +44,7 @@ interface Property {
 }
 
 const PropertiesList: React.FC = () => {
+  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const {
     showLoginModal,
@@ -375,11 +376,16 @@ const PropertiesList: React.FC = () => {
             <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
               {/* Property Image */}
               <div className="relative">
-                <img
-                  src={property.images && property.images.length > 0 ? property.images[0] : '/image_default_properties.jpg'}
-                  alt={property.title}
-                  className="w-full h-64 object-cover"
-                />
+                <button 
+                  onClick={() => navigate(`/properties/${property.public_id}`)}
+                  className="w-full h-64 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  <img
+                    src={property.images && property.images.length > 0 ? property.images[0] : '/image_default_properties.jpg'}
+                    alt={property.title}
+                    className="w-full h-64 object-cover hover:opacity-90 transition-opacity duration-200"
+                  />
+                </button>
                 <button
                   onClick={() => toggleFavorite(property.public_id)}
                   className="absolute top-3 right-3 p-2 rounded-full bg-white/80 hover:bg-white transition-colors"

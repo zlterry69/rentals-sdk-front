@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { 
   MagnifyingGlassIcon,
   MapPinIcon,
@@ -49,6 +49,7 @@ interface Property {
 }
 
 const ExploreRentals: React.FC = () => {
+  const navigate = useNavigate();
   const { user, isAuthenticated } = useAuth();
   const {
     showLoginModal,
@@ -386,19 +387,24 @@ const ExploreRentals: React.FC = () => {
             <div key={property.id} className="bg-white rounded-lg shadow-md overflow-hidden hover:shadow-lg transition-shadow">
               {/* Image */}
               <div className="relative h-48 bg-gray-200">
-                {property.images && property.images.length > 0 ? (
-                  <img 
-                    src={property.images[0]} 
-                    alt={property.title}
-                    className="w-full h-full object-cover"
-                  />
-                ) : (
-                  <img 
-                    src="/image_default_properties.jpg" 
-                    alt={property.title}
-                    className="w-full h-full object-cover"
-                  />
-                )}
+                <button 
+                  onClick={() => navigate(`/properties/${property.public_id}`)}
+                  className="w-full h-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2"
+                >
+                  {property.images && property.images.length > 0 ? (
+                    <img 
+                      src={property.images[0]} 
+                      alt={property.title}
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity duration-200"
+                    />
+                  ) : (
+                    <img 
+                      src="/image_default_properties.jpg" 
+                      alt={property.title}
+                      className="w-full h-full object-cover hover:opacity-90 transition-opacity duration-200"
+                    />
+                  )}
+                </button>
                 
                 {/* Favorite Button */}
                 <button

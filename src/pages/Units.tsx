@@ -37,6 +37,8 @@ interface Unit {
   images: string[];
   rating: number;
   total_reviews: number;
+  real_rating?: number;
+  real_total_reviews?: number;
 }
 
 const Units: React.FC = () => {
@@ -103,6 +105,26 @@ const Units: React.FC = () => {
   };
 
   // Fetch units from backend
+  // Función para calcular rating en tiempo real
+  const calculatePropertyRating = async (propertyPublicId: string) => {
+    try {
+      const response = await apiClient.get(`/reviews/unit/${propertyPublicId}`);
+      const reviews = response.data || [];
+      
+      if (reviews.length === 0) {
+        return { rating: 0, total_reviews: 0 };
+      }
+      
+      const ratings = reviews.map((review: any) => review.rating).filter((rating: number) => rating > 0);
+      const averageRating = ratings.length > 0 ? Math.round((ratings.reduce((sum: number, rating: number) => sum + rating, 0) / ratings.length) * 10) / 10 : 0;
+      
+      return { rating: averageRating, total_reviews: reviews.length };
+    } catch (error) {
+      console.error('Error fetching reviews for property:', propertyPublicId, error);
+      return { rating: 0, total_reviews: 0 };
+    }
+  };
+
   const fetchUnits = async () => {
     try {
       setIsLoading(true);
@@ -117,9 +139,10 @@ const Units: React.FC = () => {
 
       const response = await apiClient.get(`/units?${params.toString()}`);
       
+      let unitsData = [];
       // Si la API devuelve datos paginados
       if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-        setUnits(response.data.data || []);
+        unitsData = response.data.data || [];
         setTotalUnits(response.data.total || 0);
         setTotalPages(response.data.total_pages || 1);
       } else {
@@ -131,9 +154,22 @@ const Units: React.FC = () => {
         // Aplicar paginación en el frontend
         const startIndex = (currentPage - 1) * unitsPerPage;
         const endIndex = startIndex + unitsPerPage;
-        setUnits(allUnits.slice(startIndex, endIndex));
+        unitsData = allUnits.slice(startIndex, endIndex);
       }
-      
+
+      // Calculate real-time ratings for each unit
+      const unitsWithRatings = await Promise.all(
+        unitsData.map(async (unit: Unit) => {
+          const { rating, total_reviews } = await calculatePropertyRating(unit.public_id);
+          return {
+            ...unit,
+            real_rating: rating,
+            real_total_reviews: total_reviews
+          };
+        })
+      );
+
+      setUnits(unitsWithRatings);
       setIsLoading(false);
     } catch (error) {
       console.error('Error fetching units:', error);
@@ -404,17 +440,22 @@ const Units: React.FC = () => {
           <div key={unit.id} className="bg-white overflow-hidden shadow rounded-lg">
             {/* Image */}
             <div className="relative h-48 bg-gray-200">
-              {unit.images.length > 0 ? (
-                <img 
-                  src={unit.images[0]} 
-                  alt={unit.title}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                <div className="w-full h-full flex items-center justify-center">
-                  <PhotoIcon className="h-12 w-12 text-gray-400" />
-                </div>
-              )}
+              <button 
+                onClick={() => navigate(`/properties/${unit.public_id}`)}
+                className="w-full h-full focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 rounded-t-lg"
+              >
+                {unit.images.length > 0 ? (
+                  <img 
+                    src={unit.images[0]} 
+                    alt={unit.title}
+                    className="w-full h-full object-cover hover:opacity-90 transition-opacity duration-200"
+                  />
+                ) : (
+                  <div className="w-full h-full flex items-center justify-center hover:bg-gray-100 transition-colors duration-200">
+                    <PhotoIcon className="h-12 w-12 text-gray-400" />
+                  </div>
+                )}
+              </button>
               <div className="absolute top-2 right-2">
                 <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(unit.status)}`}>
                   {getStatusText(unit.status)}
@@ -431,7 +472,7 @@ const Units: React.FC = () => {
                 <div className="flex items-center">
                   <StarIcon className="h-4 w-4 text-yellow-400 fill-current" />
                   <span className="ml-1 text-sm text-gray-600">
-                    {unit.rating} ({unit.total_reviews})
+                    {unit.real_rating || 0} ({unit.real_total_reviews || 0})
                   </span>
                 </div>
               </div>

@@ -11,13 +11,26 @@ import {
   ExclamationTriangleIcon,
   EyeIcon,
   PencilIcon,
-  ArrowDownTrayIcon
+  ArrowDownTrayIcon,
+  TrashIcon,
+  XMarkIcon,
+  XCircleIcon
 } from '@heroicons/react/24/outline';
 import { apiClient } from '@/app/api';
 import { toast } from 'react-hot-toast';
 import CreateLeaseModal from '@/components/modals/CreateLeaseModal';
 import EditLeaseModal from '@/components/modals/EditLeaseModal';
 import { useAuth } from '@/contexts/AuthContext';
+
+interface PaymentMethod {
+  id: string;
+  name: string;
+  payment_type: string;
+  code?: string;
+  description?: string;
+  type?: string;
+  icon_url?: string;
+}
 
 interface Lease {
   id: string;
@@ -35,7 +48,22 @@ interface Lease {
   contract_document_s3_key?: string;
   expenses?: any[];
   created_at: string;
-  property: {
+  // Campos directos del backend
+  property_title: string;
+  property_address: string;
+  bedrooms: number;
+  bathrooms: number;
+  area_sqm: number;
+  property_images: string[];
+  tenant_name: string;
+  tenant_email: string;
+  tenant_phone?: string;
+  host_name: string;
+  host_email: string;
+  currency_code?: string;
+  currency_name?: string;
+  // Campos anidados (para compatibilidad)
+  property?: {
     id: string;
     title: string;
     address: string;
@@ -44,18 +72,18 @@ interface Lease {
     area_sqm: number;
     images: string[];
   };
-  tenant: {
+  tenant?: {
     id: string;
     name: string;
     email: string;
     phone?: string;
   };
-  host: {
+  host?: {
     id: string;
     name: string;
     email: string;
   };
-  currency: {
+  currency?: {
     code: string;
     name: string;
   };
@@ -69,6 +97,9 @@ const Leases: React.FC = () => {
   const [isLoading, setIsLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [editingLease, setEditingLease] = useState<Lease | null>(null);
+  const [viewingLease, setViewingLease] = useState<Lease | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
+  const [paymentMethodsLoading, setPaymentMethodsLoading] = useState(false);
 
   // Verificar si el usuario tiene permisos para ver contratos
   const canViewLeases = user?.role === 'admin' || user?.role === 'superadmin';
@@ -84,6 +115,11 @@ const Leases: React.FC = () => {
     fetchLeases();
   }, [currentPage, statusFilter]);
 
+  // Cargar métodos de pago una sola vez al montar el componente
+  useEffect(() => {
+    fetchPaymentMethods();
+  }, []);
+
   const fetchLeases = async () => {
     try {
       setIsLoading(true);
@@ -96,25 +132,47 @@ const Leases: React.FC = () => {
         params.append('status', statusFilter);
       }
       
-      const response = await apiClient.get(`/leases?${params}`);
+      // Aumentar timeout a 30 segundos
+      const response = await apiClient.get(`/leases?${params}`, {
+        timeout: 30000
+      });
       const data = response.data;
       
-      setLeases(data.data || []);
-      setTotalPages(data.total_pages || 1);
-      setTotalLeases(data.total || 0);
-    } catch (error) {
+      setLeases(data.leases || []);
+      setTotalPages(data.pagination?.pages || 1);
+      setTotalLeases(data.pagination?.total || 0);
+    } catch (error: any) {
       console.error('Error fetching leases:', error);
-      toast.error('Error al cargar contratos');
+      if (error.code === 'ECONNABORTED') {
+        toast.error('La solicitud tardó demasiado. Intenta de nuevo.');
+      } else {
+        toast.error('Error al cargar contratos');
+      }
       setLeases([]);
     } finally {
       setIsLoading(false);
     }
   };
 
+  const fetchPaymentMethods = async () => {
+    try {
+      setPaymentMethodsLoading(true);
+      const response = await apiClient.get('/invoices/payment-methods', {
+        timeout: 15000
+      });
+      setPaymentMethods(response.data || []);
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
+      setPaymentMethods([]);
+    } finally {
+      setPaymentMethodsLoading(false);
+    }
+  };
+
   const filteredLeases = leases.filter(lease => {
-    const matchesSearch = lease.tenant.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lease.property.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         lease.property.address.toLowerCase().includes(searchTerm.toLowerCase());
+    const matchesSearch = lease.tenant_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         lease.property_title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         lease.property_address?.toLowerCase().includes(searchTerm.toLowerCase());
     
     return matchesSearch;
   });
@@ -158,11 +216,17 @@ const Leases: React.FC = () => {
     }
 
     try {
+      // Obtener la extensión del archivo de la URL
+      const url = new URL(lease.contract_document_url);
+      const pathname = url.pathname;
+      const extension = pathname.split('.').pop() || 'pdf';
+      
       // Crear un enlace temporal para descargar
       const link = document.createElement('a');
       link.href = lease.contract_document_url;
-      link.download = `contrato_${lease.public_id}.pdf`;
-      link.target = '_blank';
+      link.download = `contrato_${lease.public_id}.${extension}`;
+      // Remover target='_blank' para forzar descarga
+      link.style.display = 'none';
       document.body.appendChild(link);
       link.click();
       document.body.removeChild(link);
@@ -170,7 +234,29 @@ const Leases: React.FC = () => {
       toast.success('Descarga iniciada');
     } catch (error) {
       console.error('Error downloading document:', error);
-      toast.error('Error al descargar el documento');
+      // Si falla la descarga automática, abrir en nueva pestaña como fallback
+      window.open(lease.contract_document_url, '_blank');
+      toast('Abriendo documento en nueva pestaña');
+    }
+  };
+
+  const [deletingLease, setDeletingLease] = useState<Lease | null>(null);
+
+  const handleDeleteLease = (lease: Lease) => {
+    setDeletingLease(lease);
+  };
+
+  const confirmDeleteLease = async () => {
+    if (!deletingLease) return;
+
+    try {
+      await apiClient.delete(`/leases/${deletingLease.public_id}`);
+      toast.success('Contrato eliminado exitosamente');
+      fetchLeases();
+      setDeletingLease(null);
+    } catch (error) {
+      console.error('Error deleting lease:', error);
+      toast.error('Error al eliminar el contrato');
     }
   };
 
@@ -182,6 +268,10 @@ const Leases: React.FC = () => {
         return 'bg-green-100 text-green-800';
       case 'expired':
         return 'bg-red-100 text-red-800';
+      case 'cancelled':
+        return 'bg-orange-100 text-orange-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
       case 'terminated':
         return 'bg-gray-100 text-gray-800';
       default:
@@ -197,6 +287,10 @@ const Leases: React.FC = () => {
         return 'Activo';
       case 'expired':
         return 'Vencido';
+      case 'cancelled':
+        return 'Cancelado';
+      case 'completed':
+        return 'Completado';
       case 'terminated':
         return 'Terminado';
       default:
@@ -212,6 +306,10 @@ const Leases: React.FC = () => {
         return <CheckCircleIcon className="h-5 w-5 text-green-500" />;
       case 'expired':
         return <ExclamationTriangleIcon className="h-5 w-5 text-red-500" />;
+      case 'cancelled':
+        return <XCircleIcon className="h-5 w-5 text-orange-500" />;
+      case 'completed':
+        return <CheckCircleIcon className="h-5 w-5 text-blue-500" />;
       case 'terminated':
         return <DocumentTextIcon className="h-5 w-5 text-gray-500" />;
       default:
@@ -393,6 +491,8 @@ const Leases: React.FC = () => {
               <option value="draft">Borradores</option>
               <option value="active">Activos</option>
               <option value="expired">Vencidos</option>
+              <option value="cancelled">Cancelados</option>
+              <option value="completed">Completados</option>
               <option value="terminated">Terminados</option>
             </select>
           </div>
@@ -417,7 +517,7 @@ const Leases: React.FC = () => {
                       <div className="ml-4">
                         <div className="flex items-center">
                           <p className="text-sm font-medium text-gray-900">
-                            {lease.tenant.name}
+                            {lease.tenant_name}
                           </p>
                           <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(lease.status)}`}>
                             {getStatusText(lease.status)}
@@ -430,7 +530,7 @@ const Leases: React.FC = () => {
                         </div>
                         <div className="mt-1 flex items-center text-sm text-gray-500">
                           <HomeIcon className="flex-shrink-0 mr-1.5 h-4 w-4" />
-                          {lease.property.title} - {lease.property.address}
+                          {lease.property_title} - {lease.property_address}
                         </div>
                         <div className="mt-1 flex items-center text-sm text-gray-500">
                           <CalendarIcon className="flex-shrink-0 mr-1.5 h-4 w-4" />
@@ -452,10 +552,9 @@ const Leases: React.FC = () => {
                     </div>
                     <div className="flex items-center space-x-2">
                       <button 
-                        onClick={() => window.open(lease.contract_document_url, '_blank')}
+                        onClick={() => setViewingLease(lease)}
                         className="text-gray-400 hover:text-blue-500"
-                        title="Ver documento"
-                        disabled={!lease.contract_document_url}
+                        title="Ver detalles"
                       >
                         <EyeIcon className="h-5 w-5" />
                       </button>
@@ -474,6 +573,13 @@ const Leases: React.FC = () => {
                         title="Editar contrato"
                       >
                         <PencilIcon className="h-5 w-5" />
+                      </button>
+                      <button 
+                        onClick={() => handleDeleteLease(lease)}
+                        className="text-gray-400 hover:text-red-500"
+                        title="Eliminar contrato"
+                      >
+                        <TrashIcon className="h-5 w-5" />
                       </button>
                     </div>
                   </div>
@@ -584,6 +690,8 @@ const Leases: React.FC = () => {
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
         onLeaseCreated={handleLeaseCreated}
+        paymentMethods={paymentMethods}
+        paymentMethodsLoading={paymentMethodsLoading}
       />
 
       {/* Modal para editar contrato */}
@@ -592,7 +700,162 @@ const Leases: React.FC = () => {
         onClose={() => setEditingLease(null)}
         onLeaseUpdated={handleLeaseUpdated}
         lease={editingLease}
+        paymentMethods={paymentMethods}
+        paymentMethodsLoading={paymentMethodsLoading}
       />
+
+      {/* Modal de confirmación para eliminar */}
+      {deletingLease && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div className="flex items-center mb-4">
+              <div className="flex-shrink-0">
+                <TrashIcon className="h-6 w-6 text-red-600" />
+              </div>
+              <div className="ml-3">
+                <h3 className="text-lg font-medium text-gray-900">
+                  Eliminar Contrato
+                </h3>
+              </div>
+            </div>
+            <div className="mb-6">
+              <p className="text-sm text-gray-500">
+                ¿Estás seguro de que quieres eliminar el contrato <strong>{deletingLease.public_id}</strong>?
+                Esta acción no se puede deshacer.
+              </p>
+            </div>
+            <div className="flex justify-end space-x-3">
+              <button
+                onClick={() => setDeletingLease(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={confirmDeleteLease}
+                className="px-4 py-2 text-sm font-medium text-white bg-red-600 border border-transparent rounded-md hover:bg-red-700"
+              >
+                Eliminar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal para ver detalles del contrato */}
+      {viewingLease && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-2xl w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-gray-900">
+                Detalles del Contrato
+              </h3>
+              <button
+                onClick={() => setViewingLease(null)}
+                className="text-gray-400 hover:text-gray-600"
+              >
+                <XMarkIcon className="h-6 w-6" />
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">ID del Contrato</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingLease.public_id}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Estado</label>
+                  <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(viewingLease.status)}`}>
+                    {getStatusText(viewingLease.status)}
+                  </span>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Propiedad</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingLease.property_title}</p>
+                  <p className="text-xs text-gray-500">{viewingLease.property_address}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Inquilino</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingLease.tenant_name}</p>
+                  <p className="text-xs text-gray-500">{viewingLease.tenant_email}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Fechas</label>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {new Date(viewingLease.start_date).toLocaleDateString('es-PE')} - {new Date(viewingLease.end_date).toLocaleDateString('es-PE')}
+                  </p>
+                  <p className="text-xs text-gray-500">{viewingLease.total_days} días</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Monto</label>
+                  <p className="mt-1 text-sm text-gray-900">
+                    S/ {viewingLease.rent_amount} ({viewingLease.rent_frequency === 'monthly' ? 'mensual' : 'anual'})
+                  </p>
+                  <p className="text-xs text-gray-500">Total: S/ {viewingLease.total_amount}</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Método de Pago</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingLease.payment_method}</p>
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Creado</label>
+                  <p className="mt-1 text-sm text-gray-900">
+                    {new Date(viewingLease.created_at).toLocaleDateString('es-PE')}
+                  </p>
+                </div>
+              </div>
+
+              {viewingLease.notes && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Notas</label>
+                  <p className="mt-1 text-sm text-gray-900">{viewingLease.notes}</p>
+                </div>
+              )}
+
+              {viewingLease.contract_document_url && (
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Documento</label>
+                  <div className="mt-2 flex space-x-2">
+                    <button
+                      onClick={() => window.open(viewingLease.contract_document_url, '_blank')}
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      <EyeIcon className="h-4 w-4 mr-2" />
+                      Ver Documento
+                    </button>
+                    <button
+                      onClick={() => handleDownloadDocument(viewingLease)}
+                      className="inline-flex items-center px-3 py-2 border border-gray-300 shadow-sm text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50"
+                    >
+                      <ArrowDownTrayIcon className="h-4 w-4 mr-2" />
+                      Descargar
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end">
+              <button
+                onClick={() => setViewingLease(null)}
+                className="px-4 py-2 text-sm font-medium text-gray-700 bg-white border border-gray-300 rounded-md hover:bg-gray-50"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
