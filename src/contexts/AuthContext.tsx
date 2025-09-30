@@ -211,7 +211,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     
     try {
       // Call real backend API
-      const response = await fetch('http://localhost:8000/auth/register', {
+      const response = await fetch(`${import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

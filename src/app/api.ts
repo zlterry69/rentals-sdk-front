@@ -1,9 +1,10 @@
 import axios, { AxiosInstance, AxiosResponse, AxiosError } from 'axios';
 import toast from 'react-hot-toast';
+import { API_CONFIG } from '../config/constants';
 
 // API configuration
-const API_BASE_URL = (import.meta as any).env?.VITE_API_BASE_URL || 'http://localhost:8000';
-const PAYMENTS_API_BASE_URL = (import.meta as any).env?.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:8001';
+const API_BASE_URL = API_CONFIG.BASE_URL;
+const PAYMENTS_API_BASE_URL = API_CONFIG.PAYMENTS_API_URL;
 
 // Create axios instances
 export const apiClient: AxiosInstance = axios.create({

@@ -364,7 +364,7 @@ const Bookings: React.FC = () => {
           reservaId: bookingToPay.public_id
         });
         
-        const response = await fetch('http://localhost:5000/checkout', {
+        const response = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/checkout`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json'
@@ -393,7 +393,7 @@ const Bookings: React.FC = () => {
           if (paymentWindow) {
             const checkPaymentStatus = setInterval(async () => {
               try {
-                const statusResponse = await fetch(`http://localhost:5000/payment-status/${paymentData.paymentId}`);
+                const statusResponse = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-status/${paymentData.paymentId}`);
                 const statusData = await statusResponse.json();
                 
                 if (statusData.payment_status === 'finished') {
