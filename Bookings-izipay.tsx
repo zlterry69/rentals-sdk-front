@@ -57,51 +57,6 @@ const Bookings: React.FC = () => {
     fetchBookings();
   }, [currentPage, filter, activeTab]);
 
-  // Verificar estado de reservas pendientes cada 10 segundos
-  useEffect(() => {
-    if (!user) return;
-
-    const interval = setInterval(async () => {
-      // Solo verificar reservas pendientes
-      const pendingBookings = bookings.filter(booking => 
-        booking.payment_status === 'PENDING' || booking.payment_status === 'CONFIRMING'
-      );
-
-      if (pendingBookings.length > 0) {
-        console.log('🔄 Verificando estado de reservas pendientes...');
-        
-        for (const booking of pendingBookings) {
-          try {
-            const response = await api.get(`/bookings/${booking.public_id}/status`);
-            const updatedStatus = response.data;
-            
-            // Si el estado cambió, actualizar la reserva
-            if (updatedStatus.payment_status !== booking.payment_status) {
-              console.log(`✅ Estado actualizado para reserva ${booking.public_id}: ${booking.payment_status} -> ${updatedStatus.payment_status}`);
-              
-              setBookings(prevBookings => 
-                prevBookings.map(b => 
-                  b.public_id === booking.public_id 
-                    ? { ...b, payment_status: updatedStatus.payment_status, status: updatedStatus.booking_status }
-                    : b
-                )
-              );
-              
-              // Mostrar notificación si el pago se completó
-              if (updatedStatus.payment_status === 'PAID') {
-                toast.success('¡Pago completado exitosamente!');
-              }
-            }
-          } catch (error) {
-            console.log(`⚠️ Error verificando estado de reserva ${booking.public_id}:`, error);
-          }
-        }
-      }
-    }, 10000); // Verificar cada 10 segundos
-
-    return () => clearInterval(interval);
-  }, [user, bookings]);
-
   const fetchBookings = async () => {
     try {
       setIsLoading(true);
@@ -280,8 +235,6 @@ const Bookings: React.FC = () => {
   const handlePaymentMethodSelect = async (method: any) => {
     if (!bookingToPay) return;
     
-    console.log('🔍 Bookings handlePaymentMethodSelect called with method:', method);
-    
     try {
       // Si es Izipay, redirigir al endpoint específico
       if (method.code === 'izipay' || method.name?.toLowerCase() === 'izipay') {
@@ -343,93 +296,14 @@ const Bookings: React.FC = () => {
         } else {
           throw new Error('Error al crear la sesión de pago');
         }
-        
-        setShowPaymentModal(false);
-        setBookingToPay(null);
-        return;
+      } else {
+        // Para otros métodos de pago (implementación futura)
+        toast.success(`Redirigiendo al pago con ${method.name}...`);
+        console.log('Método de pago seleccionado:', method);
       }
       
-      // Si es NOWPayments, usar el SDK
-      if (method.name === 'NOWPayments') {
-        console.log('🚀 NOWPayments selected in Bookings, calling SDK...');
-        
-        // Cerrar el modal de pagos inmediatamente
-        setShowPaymentModal(false);
-        
-        // Llamar al SDK de NOWPayments
-        console.log('📤 Sending request to SDK with booking data:', {
-          amount: bookingToPay.total_amount,
-          currency: 'PEN',
-          cryptoCurrency: 'ETH',
-          reservaId: bookingToPay.public_id
-        });
-        
-        const response = await fetch('http://localhost:5000/checkout', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            amount: bookingToPay.total_amount,
-            currency: 'PEN',
-            cryptoCurrency: 'ETH', // Por defecto ETH, después se puede hacer dinámico
-            reservaId: bookingToPay.public_id
-          })
-        });
-
-        console.log('📥 SDK response status:', response.status);
-        const paymentData = await response.json();
-        console.log('📥 SDK response data:', paymentData);
-
-        if (paymentData.success) {
-          // Abrir ventana de pago de NOWPayments
-          const paymentWindow = window.open(
-            paymentData.checkoutUrl,
-            'nowpayments',
-            'width=800,height=600,scrollbars=yes,resizable=yes'
-          );
-
-          // Monitorear el estado del pago
-          if (paymentWindow) {
-            const checkPaymentStatus = setInterval(async () => {
-              try {
-                const statusResponse = await fetch(`http://localhost:5000/payment-status/${paymentData.paymentId}`);
-                const statusData = await statusResponse.json();
-                
-                if (statusData.payment_status === 'finished') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  setShowPaymentModal(false);
-                  setBookingToPay(null);
-                  toast.success('¡Pago completado exitosamente!');
-                  fetchBookings(); // Recargar las reservas
-                } else if (statusData.payment_status === 'failed') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  toast.error('El pago falló. Por favor intenta nuevamente.');
-                }
-              } catch (error) {
-                console.error('Error verificando estado del pago:', error);
-              }
-            }, 5000); // Verificar cada 5 segundos
-
-            // Limpiar el intervalo si la ventana se cierra
-            paymentWindow.addEventListener('beforeunload', () => {
-              clearInterval(checkPaymentStatus);
-            });
-          }
-        } else {
-          toast.error('Error al crear el pago con NOWPayments. Por favor intenta nuevamente.');
-        }
-        return;
-      }
-
-      // Para otros métodos de pago, usar la lógica original
-      toast.success('Redirigiendo al pago...');
       setShowPaymentModal(false);
       setBookingToPay(null);
-      // Recargar las reservas para actualizar el estado
-      fetchBookings();
     } catch (error) {
       console.error('Error processing payment:', error);
       toast.error('Error al procesar el pago');
