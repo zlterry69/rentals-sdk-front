@@ -862,11 +862,21 @@ const PropertyDetail: React.FC = () => {
       const nights = calculateNights();
       const nightlyRate = property?.monthly_rent || 0;
       
+      // Generar fechas por defecto si no están configuradas
+      const today = new Date();
+      const tomorrow = new Date(today);
+      tomorrow.setDate(tomorrow.getDate() + 1);
+      const dayAfterTomorrow = new Date(today);
+      dayAfterTomorrow.setDate(dayAfterTomorrow.getDate() + 2);
+      
+      const defaultCheckIn = checkIn || tomorrow.toISOString().split('T')[0];
+      const defaultCheckOut = checkOut || dayAfterTomorrow.toISOString().split('T')[0];
+      
       // Crear la reserva sin pago inmediato
       const bookingData = {
         unit_id: property?.public_id,
-        check_in: checkIn,
-        check_out: checkOut,
+        check_in: defaultCheckIn,
+        check_out: defaultCheckOut,
         guests: guests,
         total_amount: totalAmount,
         status: 'BOOKING_PENDING', // Estado pendiente de pago
