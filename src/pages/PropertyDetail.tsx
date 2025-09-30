@@ -743,8 +743,83 @@ const PropertyDetail: React.FC = () => {
   };
 
   const handlePaymentMethodSelect = async (method: any) => {
+    console.log('🔍 handlePaymentMethodSelect called with method:', method);
     try {
-      // Create payment first (this would be a real API call)
+      // Si es NOWPayments, usar el SDK
+      if (method.name === 'NOWPayments') {
+        console.log('🚀 NOWPayments selected, calling SDK...');
+        const totalAmount = calculateTotal() + 40;
+        
+        // Cerrar el modal de reserva inmediatamente
+        setShowBookingModal(false);
+        
+        // Llamar al SDK de NOWPayments
+        console.log('📤 Sending request to SDK with data:', {
+          amount: totalAmount,
+          currency: 'PEN',
+          cryptoCurrency: 'ETH',
+          reservaId: `CASA-${Date.now()}`
+        });
+        
+               const response = await fetch('http://localhost:5000/checkout', {
+                 method: 'POST',
+                 headers: {
+                   'Content-Type': 'application/json'
+                 },
+                 body: JSON.stringify({
+                   amount: totalAmount,
+                   currency: 'PEN',
+                   cryptoCurrency: 'ETH', // Por defecto ETH, después se puede hacer dinámico
+                   reservaId: property?.public_id || `CASA-${Date.now()}`
+                 })
+               });
+
+        console.log('📥 SDK response status:', response.status);
+        const paymentData = await response.json();
+        console.log('📥 SDK response data:', paymentData);
+
+        if (paymentData.success) {
+          // Abrir ventana de pago de NOWPayments
+          const paymentWindow = window.open(
+            paymentData.checkoutUrl,
+            'nowpayments',
+            'width=800,height=600,scrollbars=yes,resizable=yes'
+          );
+
+          // Monitorear el estado del pago
+          if (paymentWindow) {
+            const checkPaymentStatus = setInterval(async () => {
+              try {
+                const statusResponse = await fetch(`http://localhost:5000/payment-status/${paymentData.paymentId}`);
+                const statusData = await statusResponse.json();
+                
+                if (statusData.payment_status === 'finished') {
+                  clearInterval(checkPaymentStatus);
+                  paymentWindow.close();
+                  setShowBookingModal(false);
+                  alert('¡Pago completado exitosamente!');
+                } else if (statusData.payment_status === 'failed') {
+                  clearInterval(checkPaymentStatus);
+                  paymentWindow.close();
+                  alert('El pago falló. Por favor intenta nuevamente.');
+                }
+              } catch (error) {
+                console.error('Error verificando estado del pago:', error);
+              }
+            }, 5000); // Verificar cada 5 segundos
+
+            // Limpiar el intervalo si la ventana se cierra
+            paymentWindow.addEventListener('beforeunload', () => {
+              clearInterval(checkPaymentStatus);
+            });
+          }
+        } else {
+          alert('Error al crear el pago con NOWPayments. Por favor intenta nuevamente.');
+        }
+        return;
+      }
+
+      // Para otros métodos de pago, usar la lógica original
       const paymentData = {
         amount: calculateTotal() + 40,
         currency: 'PEN',

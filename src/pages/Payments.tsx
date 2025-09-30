@@ -106,6 +106,33 @@ const Payments: React.FC = () => {
     fetchPayments();
   }, []);
 
+  // Verificar pagos recientes cada 15 segundos
+  useEffect(() => {
+    const interval = setInterval(async () => {
+      try {
+        console.log('🔄 Verificando pagos recientes...');
+        const response = await api.get('/payments/recent?limit=5');
+        const recentPayments = response.data.payments || [];
+        
+        if (recentPayments.length > 0) {
+          // Verificar si hay pagos nuevos o actualizados
+          const hasNewPayments = recentPayments.some((recentPayment: any) => 
+            !payments.find(p => p.public_id === recentPayment.public_id)
+          );
+          
+          if (hasNewPayments) {
+            console.log('✅ Nuevos pagos encontrados, actualizando lista...');
+            fetchPayments(); // Recargar todos los pagos
+          }
+        }
+      } catch (error) {
+        console.log('⚠️ Error verificando pagos recientes:', error);
+      }
+    }, 15000); // Verificar cada 15 segundos
+
+    return () => clearInterval(interval);
+  }, [payments]);
+
   const fetchPayments = async () => {
     try {
       setIsLoading(true);
