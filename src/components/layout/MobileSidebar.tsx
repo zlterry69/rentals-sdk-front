@@ -118,11 +118,11 @@ export const MobileSidebar: React.FC<MobileSidebarProps> = ({
                       <div className="flex items-center gap-x-4 px-2 py-3 text-sm font-semibold leading-6 text-gray-900">
                         <div className="h-8 w-8 rounded-full bg-gray-300 flex items-center justify-center">
                           <span className="text-sm font-medium text-gray-700">
-                            {user?.firstName?.[0]}{user?.lastName?.[0]}
+                            {user?.full_name ? user.full_name[0].toUpperCase() : 'U'}
                           </span>
                         </div>
                         <span className="sr-only">Tu perfil</span>
-                        <span aria-hidden="true">{user?.firstName} {user?.lastName}</span>
+                        <span aria-hidden="true">{user?.full_name || 'Usuario'}</span>
                       </div>
                       <button
                         onClick={logout}
