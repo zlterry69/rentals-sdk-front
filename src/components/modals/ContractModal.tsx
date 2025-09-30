@@ -43,11 +43,11 @@ export const ContractModal: React.FC<ContractModalProps> = ({
   });
   
   const [isLoading, setIsLoading] = useState(false);
-  const [errors, setErrors] = useState<Partial<ContractForm>>({});
+  const [errors, setErrors] = useState<Record<string, string>>({});
   const [dragActive, setDragActive] = useState(false);
 
   const validateForm = (): boolean => {
-    const newErrors: Partial<ContractForm> = {};
+    const newErrors: Record<string, string> = {};
 
     if (!formData.title.trim()) {
       newErrors.title = 'El título del contrato es requerido';
@@ -137,7 +137,11 @@ export const ContractModal: React.FC<ContractModalProps> = ({
     setFormData(prev => ({ ...prev, [field]: value }));
     // Clear error when user starts typing
     if (errors[field]) {
-      setErrors(prev => ({ ...prev, [field]: undefined }));
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors[field];
+        return newErrors;
+      });
     }
   };
 
@@ -153,7 +157,11 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         return;
       }
       setFormData(prev => ({ ...prev, contract_file: file }));
-      setErrors(prev => ({ ...prev, contract_file: undefined }));
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.contract_file;
+        return newErrors;
+      });
     }
   };
 
@@ -183,7 +191,11 @@ export const ContractModal: React.FC<ContractModalProps> = ({
         return;
       }
       setFormData(prev => ({ ...prev, contract_file: file }));
-      setErrors(prev => ({ ...prev, contract_file: undefined }));
+      setErrors(prev => {
+        const newErrors = { ...prev };
+        delete newErrors.contract_file;
+        return newErrors;
+      });
     }
   };
 
