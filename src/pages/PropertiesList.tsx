@@ -313,7 +313,8 @@ const PropertiesList: React.FC = () => {
                   type="date"
                   value={searchFilters.check_in}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, check_in: e.target.value }))}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  readOnly
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                 />
               </div>
             </div>
@@ -329,7 +330,8 @@ const PropertiesList: React.FC = () => {
                   type="date"
                   value={searchFilters.check_out}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, check_out: e.target.value }))}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  readOnly
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                 />
               </div>
             </div>
@@ -344,7 +346,8 @@ const PropertiesList: React.FC = () => {
                 <select
                   value={searchFilters.guests}
                   onChange={(e) => setSearchFilters(prev => ({ ...prev, guests: parseInt(e.target.value) }))}
-                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                  disabled
+                  className="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg bg-gray-100 cursor-not-allowed"
                 >
                   {[1,2,3,4,5,6,7,8].map(num => (
                     <option key={num} value={num}>

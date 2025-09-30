@@ -212,10 +212,13 @@ const PropertyDetail: React.FC = () => {
 
   // Fetch payment methods for this property owner
   const fetchPaymentMethods = async () => {
-    if (!property?.owner_id) return;
+    // Solo cargar métodos de pago si hay usuario autenticado
+    if (!user) {
+      return;
+    }
     
     try {
-      const response = await api.get(`/payment-accounts/public/${property.owner_id}`);
+      const response = await api.get('/invoices/payment-methods');
       setPaymentMethods(response.data);
     } catch (error) {
       console.error('Error fetching payment methods:', error);
@@ -227,8 +230,23 @@ const PropertyDetail: React.FC = () => {
     if (property) {
       fetchReviews();
       fetchPaymentMethods();
+      checkFavoriteStatus();
     }
-  }, [property]);
+  }, [property, user]);
+
+  // Check if property is in favorites
+  const checkFavoriteStatus = async () => {
+    if (!user || !id) return;
+    
+    try {
+      const response = await api.get('/favorites/');
+      const favorites = response.data || [];
+      const isInFavorites = favorites.some((fav: any) => fav.unit_public_id === id);
+      setIsFavorite(isInFavorites);
+    } catch (error) {
+      console.error('Error checking favorite status:', error);
+    }
+  };
 
   const calculateNights = () => {
     if (!checkIn || !checkOut) return 0;
@@ -710,17 +728,14 @@ const PropertyDetail: React.FC = () => {
     }
 
     try {
-      if (isFavorite) {
-        // Remove from favorites
-        await api.delete(`/favorites/${id}`);
-        setIsFavorite(false);
-        toast.success('Eliminado de favoritos');
-      } else {
-        // Add to favorites
-        await api.post('/favorites', { unit_id: id });
-        setIsFavorite(true);
-        toast.success('Agregado a favoritos');
-      }
+      const response = await api.post('/favorites/toggle', {
+        unit_public_id: id
+      });
+      
+      const { is_favorite } = response.data;
+      setIsFavorite(is_favorite);
+      
+      toast.success(is_favorite ? 'Agregado a favoritos' : 'Eliminado de favoritos');
     } catch (error) {
       console.error('Error toggling favorite:', error);
       toast.error('Error al actualizar favoritos');
@@ -763,6 +778,38 @@ const PropertyDetail: React.FC = () => {
     } catch (error) {
       console.error('Error creating payment:', error);
       alert('Error al procesar el pago. Por favor intenta nuevamente.');
+    }
+  };
+
+  const handlePayLater = async () => {
+    try {
+      const totalAmount = calculateTotal() + 40;
+      const nights = calculateNights();
+      const nightlyRate = property?.monthly_rent || 0;
+      
+      // Crear la reserva sin pago inmediato
+      const bookingData = {
+        unit_id: property?.public_id,
+        check_in: checkIn,
+        check_out: checkOut,
+        guests: guests,
+        total_amount: totalAmount,
+        status: 'BOOKING_PENDING', // Estado pendiente de pago
+        nightly_rate: nightlyRate,
+        cleaning_fee: 25.0,
+        service_fee: 15.0
+      };
+
+      const response = await api.post('/bookings/', bookingData);
+      
+      if (response.data) {
+        toast.success('Reserva creada exitosamente. Puedes pagar más tarde desde "Mis Reservas"');
+        // Redirigir a la página de reservas o cerrar el modal
+        setShowBookingModal(false);
+      }
+    } catch (error) {
+      console.error('Error creating booking:', error);
+      toast.error('Error al crear la reserva. Por favor intenta nuevamente.');
     }
   };
 
@@ -1640,20 +1687,20 @@ const PropertyDetail: React.FC = () => {
                           ? editFormData.monthly_rent 
                           : property?.monthly_rent || 0))} x {calculateNights()} noches
                       </span>
-                      <span>${calculateTotal()}</span>
+                      <span>S/ {calculateTotal()}</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600 mb-2">
                       <span>Tarifa de limpieza</span>
-                      <span>$25</span>
+                      <span>S/ 25</span>
                     </div>
                     <div className="flex justify-between text-sm text-gray-600 mb-2">
                       <span>Tarifa de servicio</span>
-                      <span>$15</span>
+                      <span>S/ 15</span>
                     </div>
                     <div className="border-t pt-2">
                       <div className="flex justify-between font-semibold text-gray-900">
                         <span>Total</span>
-                        <span>${calculateTotal() + 40}</span>
+                        <span>S/ {calculateTotal() + 40}</span>
                       </div>
                     </div>
                   </div>
@@ -1917,8 +1964,9 @@ const PropertyDetail: React.FC = () => {
         isOpen={showBookingModal}
         onClose={() => setShowBookingModal(false)}
         amount={calculateTotal() + 40}
-        currency="USD"
+        currency="PEN"
         onPaymentMethodSelect={handlePaymentMethodSelect}
+        onPayLater={handlePayLater}
       />
 
         <UserReviewsModal

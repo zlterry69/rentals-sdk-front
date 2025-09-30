@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   ChartBarIcon,
   CalendarIcon,
@@ -9,12 +9,14 @@ import {
   ArrowDownTrayIcon,
   EyeIcon
 } from '@heroicons/react/24/outline';
+import jsPDF from 'jspdf';
+import html2canvas from 'html2canvas';
+import { toast } from 'react-hot-toast';
 
 interface ReportData {
   month: string;
   revenue: number;
   expenses: number;
-  occupancy: number;
   properties: number;
 }
 
@@ -22,8 +24,8 @@ interface PropertyPerformance {
   id: string;
   name: string;
   revenue: number;
-  occupancy: number;
   rating: number;
+  total_bookings: number;
 }
 
 const Reports: React.FC = () => {
@@ -31,6 +33,8 @@ const Reports: React.FC = () => {
   const [propertyPerformance, setPropertyPerformance] = useState<PropertyPerformance[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState('6months');
   const [isLoading, setIsLoading] = useState(true);
+  const [isExporting, setIsExporting] = useState(false);
+  const reportRef = useRef<HTMLDivElement>(null);
 
   // Fetch reports data from backend
   useEffect(() => {
@@ -65,15 +69,57 @@ const Reports: React.FC = () => {
   const revenueChange = currentMonth && previousMonth 
     ? ((currentMonth.revenue - previousMonth.revenue) / previousMonth.revenue) * 100
     : 0;
-  
-  const occupancyChange = currentMonth && previousMonth
-    ? currentMonth.occupancy - previousMonth.occupancy
-    : 0;
 
   const totalRevenue = reportData.reduce((sum, data) => sum + data.revenue, 0);
   const totalExpenses = reportData.reduce((sum, data) => sum + data.expenses, 0);
   const netProfit = totalRevenue - totalExpenses;
-  const avgOccupancy = reportData.reduce((sum, data) => sum + data.occupancy, 0) / reportData.length;
+  const totalProperties = reportData.length > 0 ? reportData[0].properties : 0;
+
+  const handleExportPDF = async () => {
+    if (!reportRef.current) return;
+
+    try {
+      setIsExporting(true);
+      toast.loading('Generando PDF...', { id: 'export-pdf' });
+
+      const canvas = await html2canvas(reportRef.current, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      });
+
+      const imgData = canvas.toDataURL('image/png');
+      const pdf = new jsPDF('p', 'mm', 'a4');
+      
+      const imgWidth = 210;
+      const pageHeight = 295;
+      const imgHeight = (canvas.height * imgWidth) / canvas.width;
+      let heightLeft = imgHeight;
+
+      let position = 0;
+
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+      heightLeft -= pageHeight;
+
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight;
+        pdf.addPage();
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight);
+        heightLeft -= pageHeight;
+      }
+
+      const fileName = `reporte-${selectedPeriod}-${new Date().toISOString().split('T')[0]}.pdf`;
+      pdf.save(fileName);
+
+      toast.success('PDF exportado exitosamente', { id: 'export-pdf' });
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      toast.error('Error al exportar PDF', { id: 'export-pdf' });
+    } finally {
+      setIsExporting(false);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -84,7 +130,7 @@ const Reports: React.FC = () => {
   }
 
   return (
-    <div className="space-y-6">
+    <div ref={reportRef} className="space-y-6">
       {/* Header */}
       <div className="sm:flex sm:items-center sm:justify-between">
         <div>
@@ -105,16 +151,18 @@ const Reports: React.FC = () => {
           </select>
           <button
             type="button"
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+            onClick={handleExportPDF}
+            disabled={isExporting}
+            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <ArrowDownTrayIcon className="-ml-1 mr-2 h-5 w-5" />
-            Exportar PDF
+            {isExporting ? 'Generando...' : 'Exportar PDF'}
           </button>
         </div>
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white overflow-hidden shadow rounded-lg">
           <div className="p-5">
             <div className="flex items-center">
@@ -195,20 +243,10 @@ const Reports: React.FC = () => {
               <div className="ml-5 w-0 flex-1">
                 <dl>
                   <dt className="text-sm font-medium text-gray-500 truncate">
-                    Ocupación Promedio
+                    Total de Propiedades
                   </dt>
-                  <dd className="flex items-baseline">
-                    <div className="text-2xl font-semibold text-gray-900">
-                      {avgOccupancy.toFixed(1)}%
-                    </div>
-                    <div className={`ml-2 flex items-baseline text-sm font-semibold ${occupancyChange >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      {occupancyChange >= 0 ? (
-                        <ArrowTrendingUpIcon className="self-center flex-shrink-0 h-4 w-4 text-green-500" />
-                      ) : (
-                        <ArrowTrendingDownIcon className="self-center flex-shrink-0 h-4 w-4 text-red-500" />
-                      )}
-                      {Math.abs(occupancyChange).toFixed(1)}%
-                    </div>
+                  <dd className="text-2xl font-semibold text-gray-900">
+                    {totalProperties}
                   </dd>
                 </dl>
               </div>
@@ -218,7 +256,7 @@ const Reports: React.FC = () => {
       </div>
 
       {/* Charts Section */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
         {/* Revenue Chart */}
         <div className="bg-white shadow rounded-lg p-6">
           <div className="flex items-center justify-between mb-4">
@@ -263,33 +301,6 @@ const Reports: React.FC = () => {
           </div>
         </div>
 
-        {/* Occupancy Chart */}
-        <div className="bg-white shadow rounded-lg p-6">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-lg font-medium text-gray-900">Tasa de Ocupación</h3>
-            <HomeModernIcon className="h-5 w-5 text-gray-400" />
-          </div>
-          <div className="space-y-3">
-            {reportData.map((data, index) => (
-              <div key={index} className="flex items-center justify-between">
-                <div className="flex-1">
-                  <div className="flex items-center justify-between text-sm">
-                    <span className="font-medium text-gray-900">{data.month}</span>
-                    <span className="text-gray-500">{data.occupancy}%</span>
-                  </div>
-                  <div className="mt-1">
-                    <div className="flex-1 bg-gray-200 rounded-full h-2">
-                      <div 
-                        className={`h-2 rounded-full ${data.occupancy >= 90 ? 'bg-green-500' : data.occupancy >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                        style={{ width: `${data.occupancy}%` }}
-                      ></div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
       </div>
 
       {/* Property Performance */}
@@ -308,7 +319,7 @@ const Reports: React.FC = () => {
                   Ingresos Mensuales
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                  Ocupación
+                  Reservas
                 </th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                   Calificación
@@ -328,15 +339,7 @@ const Reports: React.FC = () => {
                     <div className="text-sm text-gray-900">S/ {property.revenue.toLocaleString()}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
-                    <div className="flex items-center">
-                      <div className="text-sm text-gray-900 mr-2">{property.occupancy}%</div>
-                      <div className="w-16 bg-gray-200 rounded-full h-2">
-                        <div 
-                          className={`h-2 rounded-full ${property.occupancy >= 90 ? 'bg-green-500' : property.occupancy >= 70 ? 'bg-yellow-500' : 'bg-red-500'}`}
-                          style={{ width: `${property.occupancy}%` }}
-                        ></div>
-                      </div>
-                    </div>
+                    <div className="text-sm text-gray-900">{property.total_bookings}</div>
                   </td>
                   <td className="px-6 py-4 whitespace-nowrap">
                     <div className="flex items-center">

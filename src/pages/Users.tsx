@@ -556,8 +556,8 @@ export const Users: React.FC = () => {
       <CreateUserModal
         isOpen={showCreateModal}
         onClose={() => setShowCreateModal(false)}
-        onUserCreated={fetchUsers}
-        currentUserRole={currentUser?.role || 'user'}
+        onCreateUser={fetchUsers}
+        isCreating={loading}
       />
 
       {/* View User Modal */}

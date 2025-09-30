@@ -1,13 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { XMarkIcon } from '@heroicons/react/24/outline';
+import { api } from '../app/api';
 
 interface PaymentMethod {
-  public_id: string;
+  id: string;
   name: string;
   code: string;
   type: 'traditional' | 'crypto';
-  description: string;
-  is_active: boolean;
+  isActive: boolean;
   icon_url?: string;
 }
 
@@ -18,6 +18,7 @@ interface PaymentModalProps {
   currency: string;
   paymentId?: string;
   onPaymentMethodSelect: (method: PaymentMethod) => void;
+  onPayLater?: () => void;
 }
 
 export const PaymentModal: React.FC<PaymentModalProps> = ({
@@ -26,7 +27,8 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   amount,
   currency,
   paymentId,
-  onPaymentMethodSelect
+  onPaymentMethodSelect,
+  onPayLater
 }) => {
   const [paymentMethods, setPaymentMethods] = useState<PaymentMethod[]>([]);
   const [loading, setLoading] = useState(true);
@@ -41,11 +43,35 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
   const fetchPaymentMethods = async () => {
     try {
       setLoading(true);
-      const response = await fetch('/api/invoices/payment-methods');
-      const methods = await response.json();
-      setPaymentMethods(methods);
+      const response = await api.get('/invoices/payment-methods');
+      const methods = response.data;
+      
+      // Convertir la respuesta a métodos de pago
+      const formattedMethods: PaymentMethod[] = [];
+      
+      if (methods && Array.isArray(methods)) {
+        methods.forEach((method: any) => {
+          formattedMethods.push({
+            id: method.id || method.code,
+            name: method.name,
+            code: method.code,
+            type: method.type || 'traditional',
+            isActive: method.is_active !== false
+          });
+        });
+      }
+      
+      setPaymentMethods(formattedMethods);
     } catch (error) {
       console.error('Error fetching payment methods:', error);
+      // Fallback methods if no data
+      setPaymentMethods([
+        { id: 'yape', name: 'Yape', code: 'yape', type: 'traditional', isActive: true },
+        { id: 'plin', name: 'Plin', code: 'plin', type: 'traditional', isActive: true },
+        { id: 'cash', name: 'Efectivo', code: 'cash', type: 'traditional', isActive: true },
+        { id: 'bitcoin', name: 'Bitcoin', code: 'bitcoin', type: 'crypto', isActive: true },
+        { id: 'ethereum', name: 'Ethereum', code: 'ethereum', type: 'crypto', isActive: true }
+      ]);
     } finally {
       setLoading(false);
     }
@@ -127,7 +153,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <div className="space-y-3">
               {filteredMethods.map((method) => (
                 <button
-                  key={method.public_id}
+                  key={method.id}
                   onClick={() => onPaymentMethodSelect(method)}
                   className="w-full p-4 border border-gray-300 rounded-lg hover:border-blue-500 hover:bg-blue-50 transition-colors text-left"
                 >
@@ -164,7 +190,7 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
                         </span>
                       </div>
                       <p className="text-sm text-gray-600 mt-1">
-                        {method.description}
+                        {method.name} - {method.type === 'crypto' ? 'Criptomoneda' : 'Método tradicional'}
                       </p>
                     </div>
 
@@ -193,12 +219,38 @@ export const PaymentModal: React.FC<PaymentModalProps> = ({
             <p className="text-sm text-gray-600">
               Todos los pagos son seguros y encriptados
             </p>
-            <button
-              onClick={onClose}
-              className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
-            >
-              Cancelar
-            </button>
+            <div className="flex space-x-3">
+              <button
+                onClick={onClose}
+                className="px-4 py-2 text-gray-600 hover:text-gray-800 transition-colors"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={() => {
+                  // Aquí se manejará "Pagar después"
+                  if (onPayLater) {
+                    onPayLater();
+                  }
+                  onClose();
+                }}
+                className="px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                Pagar después
+              </button>
+              <button
+                onClick={() => {
+                  // Aquí se manejará "Pagar ahora" - se seleccionará el método de pago
+                  if (filteredMethods.length > 0) {
+                    onPaymentMethodSelect(filteredMethods[0]);
+                  }
+                }}
+                disabled={filteredMethods.length === 0}
+                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed transition-colors"
+              >
+                Pagar ahora
+              </button>
+            </div>
           </div>
         </div>
       </div>

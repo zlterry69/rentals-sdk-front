@@ -44,7 +44,7 @@ const Dashboard: React.FC = () => {
         setIsLoadingActivity(true);
         
         // Fetch user's properties
-        const propertiesResponse = await api.get('/units');
+        const propertiesResponse = await api.get('/units/my-units');
         const properties = propertiesResponse.data || [];
         
         // Fetch user's bookings (as guest) and received bookings (as owner)
@@ -53,16 +53,54 @@ const Dashboard: React.FC = () => {
         
         try {
           const myBookingsResponse = await api.get('/bookings/my-bookings');
-          myBookings = myBookingsResponse.data || [];
-        } catch (bookingError) {
-          console.log('My bookings endpoint not available yet');
+          // Manejar diferentes estructuras de respuesta
+          if (myBookingsResponse.data && typeof myBookingsResponse.data === 'object' && 'bookings' in myBookingsResponse.data) {
+            // Estructura paginada con 'bookings' y 'pagination'
+            myBookings = myBookingsResponse.data.bookings || [];
+          } else if (myBookingsResponse.data && typeof myBookingsResponse.data === 'object' && 'data' in myBookingsResponse.data) {
+            // Estructura paginada con 'data' y 'total'
+            myBookings = myBookingsResponse.data.data || [];
+          } else {
+            // Array simple
+            myBookings = myBookingsResponse.data || [];
+          }
+        } catch (bookingError: any) {
+          if (bookingError.response?.status === 403) {
+            console.log('Access denied to my bookings');
+          } else {
+            console.log('My bookings endpoint not available yet');
+          }
         }
         
         try {
           const receivedBookingsResponse = await api.get('/bookings/received');
-          receivedBookings = receivedBookingsResponse.data || [];
-        } catch (bookingError) {
-          console.log('Received bookings endpoint not available yet');
+          // Manejar diferentes estructuras de respuesta
+          if (receivedBookingsResponse.data && typeof receivedBookingsResponse.data === 'object' && 'bookings' in receivedBookingsResponse.data) {
+            // Estructura paginada con 'bookings' y 'pagination'
+            receivedBookings = receivedBookingsResponse.data.bookings || [];
+          } else if (receivedBookingsResponse.data && typeof receivedBookingsResponse.data === 'object' && 'data' in receivedBookingsResponse.data) {
+            // Estructura paginada con 'data' y 'total'
+            receivedBookings = receivedBookingsResponse.data.data || [];
+          } else {
+            // Array simple
+            receivedBookings = receivedBookingsResponse.data || [];
+          }
+        } catch (bookingError: any) {
+          if (bookingError.response?.status === 403) {
+            console.log('Access denied to received bookings');
+          } else {
+            console.log('Received bookings endpoint not available yet');
+          }
+        }
+        
+        // Asegurar que sean arrays
+        if (!Array.isArray(myBookings)) {
+          console.warn('myBookings is not an array:', myBookings);
+          myBookings = [];
+        }
+        if (!Array.isArray(receivedBookings)) {
+          console.warn('receivedBookings is not an array:', receivedBookings);
+          receivedBookings = [];
         }
         
         // Calculate stats
@@ -85,11 +123,13 @@ const Dashboard: React.FC = () => {
         
         // Add recent properties
         properties.slice(0, 2).forEach((property: any) => {
+          const district = property.district || property.address || 'Ubicación no especificada';
+          
           activity.push({
             id: `property-${property.public_id}`,
             type: 'property',
             title: `Nueva propiedad: ${property.title}`,
-            description: `Propiedad agregada en ${property.district}`,
+            description: `Propiedad agregada en ${district}`,
             time: property.created_at,
             amount: null,
             icon: HomeIcon,
@@ -99,11 +139,14 @@ const Dashboard: React.FC = () => {
 
         // Add recent received bookings (estas son reservas que RECIBÍ como propietario)
         receivedBookings.slice(0, 2).forEach((booking: any) => {
+          const unitTitle = booking.units?.title || 'Propiedad';
+          const guestName = booking.users?.full_name || 'Usuario';
+          
           activity.push({
             id: `received-booking-${booking.public_id}`,
             type: 'received-booking',
             title: `Reserva recibida`,
-            description: `${booking.unit_title} reservado del ${booking.check_in_date} al ${booking.check_out_date}`,
+            description: `${guestName} reservó ${unitTitle} del ${booking.check_in_date} al ${booking.check_out_date}`,
             time: booking.created_at,
             amount: `+S/ ${booking.total_amount?.toLocaleString()}`, // Positivo porque es un ingreso
             icon: CalendarIcon,

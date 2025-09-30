@@ -66,7 +66,6 @@ const ExploreRentals: React.FC = () => {
   
   const [properties, setProperties] = useState<Property[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
-  const [selectedDistrict, setSelectedDistrict] = useState('all');
   const [priceRange, setPriceRange] = useState({ min: 0, max: 5000 });
   const [bedrooms, setBedrooms] = useState('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -151,7 +150,6 @@ const ExploreRentals: React.FC = () => {
         setIsLoading(true);
         // Build query parameters
         const params = new URLSearchParams();
-        if (selectedDistrict !== 'all') params.append('district_filter', selectedDistrict);
         if (priceRange.min > 0) params.append('min_price', priceRange.min.toString());
         if (priceRange.max < 5000) params.append('max_price', priceRange.max.toString());
         if (bedrooms !== 'all') params.append('bedrooms', bedrooms);
@@ -204,7 +202,7 @@ const ExploreRentals: React.FC = () => {
     };
 
     fetchProperties();
-  }, [selectedDistrict, priceRange, bedrooms, currentPage]); // Re-fetch when filters or page change
+  }, [priceRange, bedrooms, currentPage]); // Re-fetch when filters or page change
 
   // Fetch favorites when user is authenticated
   useEffect(() => {
@@ -215,10 +213,6 @@ const ExploreRentals: React.FC = () => {
     }
   }, [isAuthenticated]);
 
-  const districts = [
-    'Miraflores', 'San Isidro', 'Barranco', 'Lima', 'Santiago de Surco',
-    'La Molina', 'San Borja', 'Magdalena', 'Jesús María', 'Lince'
-  ];
 
   // Aplicar filtros de búsqueda local y favoritos
   const filteredProperties = properties.filter(property => {
@@ -285,7 +279,7 @@ const ExploreRentals: React.FC = () => {
   // Resetear página cuando cambien los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [selectedDistrict, priceRange, bedrooms]);
+  }, [priceRange, bedrooms]);
 
   if (isLoading) {
     return (
@@ -322,19 +316,6 @@ const ExploreRentals: React.FC = () => {
             </div>
           </div>
 
-          {/* District Filter */}
-          <div>
-            <select
-              value={selectedDistrict}
-              onChange={(e) => setSelectedDistrict(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">Todos los distritos</option>
-              {districts.map(district => (
-                <option key={district} value={district}>{district}</option>
-              ))}
-            </select>
-          </div>
 
           {/* Bedrooms Filter */}
           <div>
@@ -488,12 +469,21 @@ const ExploreRentals: React.FC = () => {
                     </p>
                     <p className="text-sm text-gray-500">por noche</p>
                   </div>
-                  <Link
-                    to={`/properties/${property.public_id}`}
-                    className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
-                  >
-                    Ver detalles
-                  </Link>
+                  <div className="flex space-x-2">
+                    <Link
+                      to={`/properties/${property.public_id}`}
+                      className="bg-gray-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-gray-700 transition-colors"
+                    >
+                      Ver detalles
+                    </Link>
+                    {/* Botón Reservar oculto - funcionalidad no desarrollada */}
+                    {/* <button
+                      onClick={() => navigate(`/checkout/${property.public_id}`)}
+                      className="bg-blue-600 text-white px-4 py-2 rounded-md text-sm font-medium hover:bg-blue-700 transition-colors"
+                    >
+                      Reservar
+                    </button> */}
+                  </div>
                 </div>
               </div>
             </div>
@@ -565,7 +555,7 @@ const ExploreRentals: React.FC = () => {
       )}
 
       {/* Empty State - Solo mostrar si no está cargando y hay filtros aplicados */}
-      {!isLoading && filteredProperties.length === 0 && (searchTerm || selectedDistrict !== 'all' || bedrooms !== 'all') && (
+      {!isLoading && filteredProperties.length === 0 && (searchTerm || bedrooms !== 'all') && (
         <div className="text-center py-12">
           <MagnifyingGlassIcon className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No se encontraron propiedades</h3>
@@ -576,7 +566,7 @@ const ExploreRentals: React.FC = () => {
       )}
 
       {/* Completely Empty State - Solo mostrar si no hay propiedades y no hay filtros */}
-      {!isLoading && properties.length === 0 && !searchTerm && selectedDistrict === 'all' && bedrooms === 'all' && (
+      {!isLoading && properties.length === 0 && !searchTerm && bedrooms === 'all' && (
         <div className="text-center py-16">
           <div className="mx-auto h-24 w-24 text-gray-300 dark:text-gray-600">
             <svg fill="currentColor" viewBox="0 0 24 24">

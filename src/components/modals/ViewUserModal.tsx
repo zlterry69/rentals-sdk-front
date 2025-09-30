@@ -8,6 +8,7 @@ interface User {
   username?: string;
   full_name?: string;
   phone?: string;
+  profile_image?: string;
   role: string;
   is_active: boolean;
   is_verified: boolean;
@@ -74,8 +75,16 @@ export const ViewUserModal: React.FC<ViewUserModalProps> = ({
         <div className="flex items-center justify-between p-6 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center space-x-3">
             <div className="flex-shrink-0">
-              <div className="h-12 w-12 rounded-full bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
-                <UserIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+              <div className="h-12 w-12 rounded-full overflow-hidden bg-primary-100 dark:bg-primary-900 flex items-center justify-center">
+                {user.profile_image ? (
+                  <img
+                    src={user.profile_image}
+                    alt={user.full_name || user.email}
+                    className="h-full w-full object-cover"
+                  />
+                ) : (
+                  <UserIcon className="h-6 w-6 text-primary-600 dark:text-primary-400" />
+                )}
               </div>
             </div>
             <div>

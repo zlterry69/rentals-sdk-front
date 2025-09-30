@@ -161,9 +161,17 @@ export const UserReviewsModal: React.FC<UserReviewsModalProps> = ({
               {currentReviews.map((review) => (
                 <div key={review.id} className="border-b border-gray-200 pb-6 last:border-b-0">
                   <div className="flex items-start space-x-4">
-                    <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
-                      {getInitials(review.reviewer_name)}
-                    </div>
+                    {review.reviewer_avatar ? (
+                      <img
+                        src={review.reviewer_avatar}
+                        alt={review.reviewer_name}
+                        className="w-10 h-10 rounded-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-10 h-10 bg-blue-600 rounded-full flex items-center justify-center text-white font-semibold">
+                        {getInitials(review.reviewer_name)}
+                      </div>
+                    )}
                     <div className="flex-1">
                       <div className="flex items-center space-x-2 mb-1">
                         <h4 className="font-semibold text-gray-900">{review.reviewer_name}</h4>

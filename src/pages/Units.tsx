@@ -45,6 +45,7 @@ const Units: React.FC = () => {
   const navigate = useNavigate();
   const [units, setUnits] = useState<Unit[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
+  const [debouncedSearchTerm, setDebouncedSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [typeFilter, setTypeFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
@@ -160,13 +161,13 @@ const Units: React.FC = () => {
     try {
       setIsLoading(true);
       
-      // Build query parameters
+      // Build query parameters (sin searchTerm - se filtra en frontend)
       const params = new URLSearchParams();
       params.append('page', currentPage.toString());
       params.append('limit', unitsPerPage.toString());
       if (statusFilter !== 'all') params.append('status', statusFilter);
-      if (typeFilter !== 'all') params.append('property_type', typeFilter);
-      if (searchTerm) params.append('search', searchTerm);
+      // Removido typeFilter ya que está deshabilitado
+      // Removido: if (searchTerm) params.append('search', searchTerm);
 
       const response = await apiClient.get(`/units?${params.toString()}`);
       
@@ -212,10 +213,47 @@ const Units: React.FC = () => {
 
   useEffect(() => {
     fetchUnits();
-  }, [currentPage, statusFilter, typeFilter, searchTerm]);
+  }, [currentPage, statusFilter]); // Removido typeFilter ya que está deshabilitado
 
-  // Los filtros se aplican en el servidor, solo aplicamos búsqueda local si es necesario
-  const filteredUnits = units;
+  // Debounce para la búsqueda (evita búsquedas excesivas)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedSearchTerm(searchTerm);
+    }, 300); // 300ms de delay
+
+    return () => clearTimeout(timer);
+  }, [searchTerm]);
+
+  // Filtrado local en JavaScript (más rápido)
+  const filteredUnits = units.filter(unit => {
+    // Filtro de búsqueda por texto
+    if (debouncedSearchTerm) {
+      const searchLower = debouncedSearchTerm.toLowerCase();
+      const title = (unit.title || '').toLowerCase();
+      const address = (unit.address || '').toLowerCase();
+      const district = (unit.district || '').toLowerCase();
+      const tenantName = (unit.tenant_name || '').toLowerCase();
+      
+      const matchesSearch = title.includes(searchLower) ||
+                           address.includes(searchLower) ||
+                           district.includes(searchLower) ||
+                           tenantName.includes(searchLower);
+      
+      if (!matchesSearch) return false;
+    }
+    
+    // Filtro de estado (Disponibles)
+    if (statusFilter !== 'all') {
+      if (unit.status !== statusFilter) return false;
+    }
+    
+    // Filtro de tipo (Habitaciones) - por ahora deshabilitado
+    // if (typeFilter !== 'all') {
+    //   if (unit.property_type !== typeFilter) return false;
+    // }
+    
+    return true;
+  });
 
   const getStatusColor = (status: string) => {
     switch (status) {
@@ -258,10 +296,10 @@ const Units: React.FC = () => {
     }
   };
 
-  // Calcular estadísticas de las unidades actuales (página actual)
-  const availableUnits = units.filter(u => u.status === 'available').length;
-  const occupiedUnits = units.filter(u => u.status === 'occupied').length;
-  const totalRevenue = units.filter(u => u.status === 'occupied').reduce((sum, u) => sum + u.monthly_rent, 0);
+  // Calcular estadísticas de las unidades filtradas (búsqueda local)
+  const availableUnits = filteredUnits.filter(u => u.status === 'available').length;
+  const occupiedUnits = filteredUnits.filter(u => u.status === 'occupied').length;
+  const totalRevenue = filteredUnits.filter(u => u.status === 'occupied').reduce((sum, u) => sum + u.monthly_rent, 0);
 
   // Funciones de paginación
   const handlePageChange = (page: number) => {
@@ -284,7 +322,7 @@ const Units: React.FC = () => {
   // Resetear página cuando cambien los filtros
   useEffect(() => {
     setCurrentPage(1);
-  }, [statusFilter, typeFilter, searchTerm]);
+  }, [statusFilter, searchTerm]); // Removido typeFilter ya que está deshabilitado
 
   if (isLoading) {
     return (
@@ -432,14 +470,16 @@ const Units: React.FC = () => {
             </select>
           </div>
 
-          {/* Type Filter */}
+          {/* Type Filter - Deshabilitado en desarrollo */}
           <div>
             <select
               value={typeFilter}
               onChange={(e) => setTypeFilter(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
+              disabled
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-gray-100 text-gray-500 cursor-not-allowed focus:outline-none"
+              title="Filtro de habitaciones en desarrollo"
             >
-              <option value="all">Todos los tipos</option>
+              <option value="all">Habitaciones</option>
               <option value="apartment">Departamentos</option>
               <option value="house">Casas</option>
               <option value="studio">Estudios</option>
@@ -454,7 +494,7 @@ const Units: React.FC = () => {
         <div className="flex items-center justify-between bg-white shadow rounded-lg p-4">
           <div>
             <p className="text-sm text-gray-600">
-              Mostrando {units.length} de {totalUnits} propiedades
+              Mostrando {filteredUnits.length} de {totalUnits} propiedades
             </p>
             <p className="text-xs text-gray-500 mt-1">
               Página {currentPage} de {totalPages}
@@ -634,7 +674,7 @@ const Units: React.FC = () => {
           <HomeModernIcon className="mx-auto h-12 w-12 text-gray-400" />
           <h3 className="mt-2 text-sm font-medium text-gray-900">No hay propiedades</h3>
           <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || statusFilter !== 'all' || typeFilter !== 'all'
+            {searchTerm || statusFilter !== 'all'
               ? 'No se encontraron propiedades con los filtros aplicados.'
               : 'Comienza agregando tu primera propiedad.'
             }

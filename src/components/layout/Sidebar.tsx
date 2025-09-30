@@ -28,7 +28,7 @@ const getNavigationItems = (userRole: string) => {
   const userNavigation = [
     { name: 'Explorar Alquileres', href: '/explore', icon: MagnifyingGlassIcon, roles: ['user', 'admin', 'superadmin'] },
     { name: 'Mis Propiedades', href: '/units', icon: BuildingOfficeIcon, roles: ['user', 'admin', 'superadmin'] },
-    { name: 'Mis Reservas', href: '/bookings', icon: CalendarIcon, roles: ['user', 'admin', 'superadmin'] },
+    { name: 'Reservas', href: '/bookings', icon: CalendarIcon, roles: ['user', 'admin', 'superadmin'] },
     { name: 'Pagos', href: '/payments', icon: CurrencyDollarIcon, roles: ['user', 'admin', 'superadmin'] },
   ];
 

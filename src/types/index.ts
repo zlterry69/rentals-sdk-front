@@ -70,8 +70,14 @@ export interface Debtor extends BaseEntity {
     phone: string;
     relationship: string;
   };
-  status: 'active' | 'inactive' | 'suspended';
+  status: 'sin_pagos' | 'al_dia' | 'pago_parcial' | 'vencido' | 'error';
   notes?: string;
+  full_name?: string;
+  property_id?: string;
+  property_name?: string;
+  monthly_rent?: number;
+  last_payment?: string;
+  debt_amount?: number;
 }
 
 export interface DebtorCreate {

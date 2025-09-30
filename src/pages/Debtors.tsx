@@ -2,19 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { 
   PlusIcon, 
   MagnifyingGlassIcon,
-  UserIcon,
-  PhoneIcon,
-  EnvelopeIcon,
-  HomeIcon,
-  CurrencyDollarIcon,
   EyeIcon,
   PencilIcon,
-  TrashIcon
+  TrashIcon,
+  XMarkIcon,
+  UserIcon
 } from '@heroicons/react/24/outline';
 import { apiClient } from '@/app/api';
 import { toast } from 'react-hot-toast';
+import CreateDebtorModal from '@/components/modals/CreateDebtorModal';
 import EditDebtorModal from '@/components/modals/EditDebtorModal';
-import ViewDebtorModal from '@/components/modals/ViewDebtorModal';
 
 interface Debtor {
   id: string;
@@ -25,7 +22,7 @@ interface Debtor {
   property_id: string;
   property_name?: string;
   monthly_rent: number;
-  status: 'active' | 'inactive' | 'pending';
+  status: 'current' | 'overdue' | 'defaulted' | 'completed';
   last_payment?: string;
   debt_amount: number;
   created_at: string;
@@ -37,368 +34,489 @@ const Debtors: React.FC = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [isLoading, setIsLoading] = useState(true);
-  const [editingDebtor, setEditingDebtor] = useState<Debtor | null>(null);
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [viewingDebtor, setViewingDebtor] = useState<Debtor | null>(null);
-  const [isViewModalOpen, setIsViewModalOpen] = useState(false);
+  const [isCreateModalOpen, setIsCreateModalOpen] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
+  const [selectedDebtor, setSelectedDebtor] = useState<Debtor | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [showViewModal, setShowViewModal] = useState(false);
+  const [showEditModal, setShowEditModal] = useState(false);
 
-  // Fetch debtors from backend
+  // Función para obtener el color del estado de pago
+  const getPaymentStatusColor = (status: string) => {
+    switch (status) {
+      case 'current':
+        return 'bg-green-100 text-green-800';
+      case 'overdue':
+        return 'bg-yellow-100 text-yellow-800';
+      case 'defaulted':
+        return 'bg-red-100 text-red-800';
+      case 'completed':
+        return 'bg-blue-100 text-blue-800';
+      default:
+        return 'bg-gray-100 text-gray-800';
+    }
+  };
+
+  const getPaymentStatusText = (status: string) => {
+    switch (status) {
+      case 'current':
+        return 'Al día';
+      case 'overdue':
+        return 'Vencido';
+      case 'defaulted':
+        return 'Moroso';
+      case 'completed':
+        return 'Nada más';
+      default:
+        return 'Desconocido';
+    }
+  };
+
+  // Fetch debtors
+  const fetchDebtors = async () => {
+    try {
+      setIsLoading(true);
+      const response = await apiClient.get('/debtors/');
+      setDebtors(response.data);
+    } catch (error) {
+      console.error('Error fetching debtors:', error);
+      toast.error('Error al cargar inquilinos');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   useEffect(() => {
-    const fetchDebtors = async () => {
-      try {
-        setIsLoading(true);
-        const response = await apiClient.get('/debtors');
-        setDebtors(response.data || []);
-      } catch (error: any) {
-        console.error('Error fetching debtors:', error);
-        // Si es un error 404 o la tabla no existe, mostrar lista vacía
-        if (error.response?.status === 404 || error.response?.status === 500) {
-          setDebtors([]);
-          toast('No hay inquilinos registrados aún');
-        } else {
-          toast.error('Error al cargar inquilinos');
-        }
-      } finally {
-        setIsLoading(false);
-      }
-    };
-
     fetchDebtors();
   }, []);
 
-  // CRUD functions
-  const handleEdit = (debtor: Debtor) => {
-    setEditingDebtor(debtor);
-    setIsEditModalOpen(true);
-  };
-
-  const handleUpdateDebtor = (updatedDebtor: any) => {
-    setDebtors(prev => 
-      prev.map(debtor => 
-        debtor.public_id === updatedDebtor.public_id ? { ...debtor, ...updatedDebtor } : debtor
-      )
-    );
-  };
-
-  const handleCloseEditModal = () => {
-    setIsEditModalOpen(false);
-    setEditingDebtor(null);
-  };
-
-  const handleDelete = async (debtorId: string) => {
-    if (!confirm('¿Estás seguro de que quieres eliminar este inquilino?')) {
-      return;
-    }
-
-    try {
-      await apiClient.delete(`/debtors/${debtorId}`);
-      setDebtors(prev => prev.filter(d => d.public_id !== debtorId));
-      toast.success('Inquilino eliminado correctamente');
-    } catch (error) {
-      console.error('Error deleting debtor:', error);
-      toast.error('Error al eliminar inquilino');
-    }
-  };
-
-  const handleView = (debtor: Debtor) => {
-    setViewingDebtor(debtor);
-    setIsViewModalOpen(true);
-  };
-
-  const handleCloseViewModal = () => {
-    setIsViewModalOpen(false);
-    setViewingDebtor(null);
-  };
-
+  // Filter debtors
   const filteredDebtors = debtors.filter(debtor => {
     const matchesSearch = debtor.full_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          debtor.email.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (debtor.property_name && debtor.property_name.toLowerCase().includes(searchTerm.toLowerCase()));
+                         (debtor.property_name || '').toLowerCase().includes(searchTerm.toLowerCase());
     
     const matchesStatus = statusFilter === 'all' || debtor.status === statusFilter;
     
     return matchesSearch && matchesStatus;
   });
 
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'bg-green-100 text-green-800';
-      case 'pending':
-        return 'bg-yellow-100 text-yellow-800';
-      case 'inactive':
-        return 'bg-red-100 text-red-800';
-      default:
-        return 'bg-gray-100 text-gray-800';
+  // Handle create debtor
+  const handleCreateDebtor = async () => {
+    await fetchDebtors();
+    setIsCreateModalOpen(false);
+  };
+
+  // Handle view debtor
+  const handleViewDebtor = (debtor: Debtor) => {
+    setSelectedDebtor(debtor);
+    setShowViewModal(true);
+  };
+
+  // Handle edit debtor
+  const handleEditDebtor = (debtor: Debtor) => {
+    setSelectedDebtor(debtor);
+    setShowEditModal(true);
+  };
+
+  // Handle delete debtor
+  const handleDeleteDebtor = (debtor: Debtor) => {
+    setSelectedDebtor(debtor);
+    setShowDeleteModal(true);
+  };
+
+  // Confirm delete
+  const confirmDelete = async () => {
+    if (!selectedDebtor) return;
+
+    try {
+      await apiClient.delete(`/debtors/${selectedDebtor.public_id}`);
+      toast.success('Inquilino eliminado exitosamente');
+      await fetchDebtors();
+      setShowDeleteModal(false);
+      setSelectedDebtor(null);
+    } catch (error) {
+      console.error('Error deleting debtor:', error);
+      toast.error('Error al eliminar inquilino');
     }
   };
 
-  const getStatusText = (status: string) => {
-    switch (status) {
-      case 'active':
-        return 'Activo';
-      case 'pending':
-        return 'Pendiente';
-      case 'inactive':
-        return 'Inactivo';
-      default:
-        return status;
-    }
-  };
+  // Calculate statistics
+  const totalDebtors = debtors.length;
+  const currentDebtors = debtors.filter(d => d.status === 'current').length;
+  const overdueDebtors = debtors.filter(d => d.status === 'overdue').length;
+  const totalDebt = debtors.reduce((sum, d) => sum + d.debt_amount, 0);
 
   if (isLoading) {
     return (
-      <div className="flex items-center justify-center h-64">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600"></div>
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+          <div className="animate-pulse">
+            <div className="h-8 bg-gray-200 rounded w-1/4 mb-4"></div>
+            <div className="h-4 bg-gray-200 rounded w-1/2 mb-8"></div>
+            <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-white rounded-lg p-6">
+                  <div className="h-4 bg-gray-200 rounded w-1/2 mb-2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/3"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="sm:flex sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Inquilinos</h1>
-          <p className="mt-2 text-sm text-gray-700">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-900">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900 dark:text-white">
+            Inquilinos
+          </h1>
+          <p className="mt-2 text-gray-600 dark:text-gray-400">
             Gestiona inquilinos activos, pagos pendientes y contratos de alquiler
           </p>
         </div>
-        <div className="mt-4 sm:mt-0">
-          <button
-            type="button"
-            onClick={() => {
-              toast('Los inquilinos se agregan automáticamente al aprobar solicitudes de alquiler desde la plataforma.', {
-                icon: 'ℹ️',
-                duration: 4000,
-              });
-            }}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500"
+
+        {/* Search and Filter */}
+        <div className="mb-6 flex flex-col sm:flex-row gap-4">
+          <div className="relative flex-1">
+            <MagnifyingGlassIcon className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-gray-400" />
+            <input
+              type="text"
+              placeholder="Buscar inquilinos..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
+            />
+          </div>
+          <select
+            value={statusFilter}
+            onChange={(e) => setStatusFilter(e.target.value)}
+            className="px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-700 dark:border-gray-600 dark:text-white"
           >
-            <HomeIcon className="-ml-1 mr-2 h-5 w-5" />
-            Ver Solicitudes de Alquiler
+            <option value="all">Todos los estados</option>
+            <option value="current">Al día</option>
+            <option value="overdue">Vencidos</option>
+            <option value="defaulted">Morosos</option>
+            <option value="completed">Completados</option>
+          </select>
+          <button
+            onClick={() => setIsCreateModalOpen(true)}
+            className="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+          >
+            <PlusIcon className="h-5 w-5" />
+            Agregar Inquilino
           </button>
         </div>
-      </div>
 
-      {/* Filters */}
-      <div className="bg-white shadow rounded-lg p-6">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          {/* Search */}
-          <div className="md:col-span-2">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MagnifyingGlassIcon className="h-5 w-5 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Buscar inquilinos..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          </div>
-
-          {/* Status Filter */}
-          <div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md leading-5 bg-white focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
-            >
-              <option value="all">Todos los estados</option>
-              <option value="active">Activos</option>
-              <option value="pending">Pendientes</option>
-              <option value="inactive">Inactivos</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+        {/* Statistics Cards */}
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6 mb-8">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <UserIcon className="h-6 w-6 text-gray-400" />
+              <div className="p-2 bg-blue-100 dark:bg-blue-900 rounded-lg">
+                <UserIcon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Total Inquilinos
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {debtors.length}
-                  </dd>
-                </dl>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Total Inquilinos</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{totalDebtors}</p>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <UserIcon className="h-6 w-6 text-green-400" />
+              <div className="p-2 bg-green-100 dark:bg-green-900 rounded-lg">
+                <UserIcon className="h-6 w-6 text-green-600 dark:text-green-400" />
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Activos
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {debtors.filter(d => d.status === 'active').length}
-                  </dd>
-                </dl>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Al día</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{currentDebtors}</p>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <CurrencyDollarIcon className="h-6 w-6 text-yellow-400" />
+              <div className="p-2 bg-yellow-100 dark:bg-yellow-900 rounded-lg">
+                <UserIcon className="h-6 w-6 text-yellow-600 dark:text-yellow-400" />
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Pendientes
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    {debtors.filter(d => d.status === 'pending').length}
-                  </dd>
-                </dl>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Vencidos</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">{overdueDebtors}</p>
               </div>
             </div>
           </div>
-        </div>
 
-        <div className="bg-white overflow-hidden shadow rounded-lg">
-          <div className="p-5">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 shadow-sm">
             <div className="flex items-center">
-              <div className="flex-shrink-0">
-                <CurrencyDollarIcon className="h-6 w-6 text-red-400" />
+              <div className="p-2 bg-red-100 dark:bg-red-900 rounded-lg">
+                <UserIcon className="h-6 w-6 text-red-600 dark:text-red-400" />
               </div>
-              <div className="ml-5 w-0 flex-1">
-                <dl>
-                  <dt className="text-sm font-medium text-gray-500 truncate">
-                    Deuda Total
-                  </dt>
-                  <dd className="text-lg font-medium text-gray-900">
-                    S/ {debtors.reduce((sum, d) => sum + d.debt_amount, 0).toFixed(2)}
-                  </dd>
-                </dl>
+              <div className="ml-4">
+                <p className="text-sm font-medium text-gray-600 dark:text-gray-400">Deuda Total</p>
+                <p className="text-2xl font-bold text-gray-900 dark:text-white">S/ {totalDebt.toFixed(2)}</p>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      {/* Table */}
-      <div className="bg-white shadow overflow-hidden sm:rounded-md">
-        <ul className="divide-y divide-gray-200">
-          {filteredDebtors.map((debtor) => (
-            <li key={debtor.id}>
-              <div className="px-4 py-4 sm:px-6">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <div className="flex-shrink-0 h-10 w-10">
-                      <div className="h-10 w-10 rounded-full bg-gray-300 flex items-center justify-center">
-                        <span className="text-sm font-medium text-gray-700">
-                          {debtor.full_name.split(' ').map(name => name[0]).join('').slice(0, 2)}
-                        </span>
-                      </div>
-                    </div>
-                    <div className="ml-4">
+        {/* Table */}
+        {filteredDebtors.length === 0 ? (
+          <div className="text-center py-12">
+            <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
+            <h3 className="mt-2 text-sm font-medium text-gray-900 dark:text-white">No hay inquilinos</h3>
+            <p className="mt-1 text-sm text-gray-500 dark:text-gray-400">
+              {searchTerm || statusFilter !== 'all' 
+                ? 'No se encontraron inquilinos con los filtros aplicados.' 
+                : 'Comienza agregando tu primer inquilino.'
+              }
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white dark:bg-gray-800 shadow-sm rounded-lg overflow-hidden">
+            <table className="min-w-full divide-y divide-gray-200 dark:divide-gray-700">
+              <thead className="bg-gray-50 dark:bg-gray-700">
+                <tr>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Inquilino
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Contacto
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Propiedad
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Renta Mensual
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Estado
+                  </th>
+                  <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Deuda
+                  </th>
+                  <th className="px-6 py-3 text-right text-xs font-medium text-gray-500 dark:text-gray-300 uppercase tracking-wider">
+                    Acciones
+                  </th>
+                </tr>
+              </thead>
+              <tbody className="bg-white dark:bg-gray-800 divide-y divide-gray-200 dark:divide-gray-700">
+                {filteredDebtors.map((debtor) => (
+                  <tr key={debtor.id} className="hover:bg-gray-50 dark:hover:bg-gray-700">
+                    <td className="px-6 py-4 whitespace-nowrap">
                       <div className="flex items-center">
-                        <p className="text-sm font-medium text-gray-900">
-                          {debtor.full_name}
-                        </p>
-                        <span className={`ml-2 inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getStatusColor(debtor.status)}`}>
-                          {getStatusText(debtor.status)}
-                        </span>
+                        <div className="flex-shrink-0 h-10 w-10">
+                          <div className="h-10 w-10 rounded-full bg-blue-100 dark:bg-blue-900 flex items-center justify-center">
+                            <span className="text-sm font-medium text-blue-600 dark:text-blue-400">
+                              {debtor.full_name.split(' ').map(n => n[0]).join('').toUpperCase()}
+                            </span>
+                          </div>
+                        </div>
+                        <div className="ml-4">
+                          <div className="text-sm font-medium text-gray-900 dark:text-white">
+                            {debtor.full_name}
+                          </div>
+                          <div className="text-sm text-gray-500 dark:text-gray-400">
+                            ID: {debtor.public_id}
+                          </div>
+                        </div>
                       </div>
-                      <div className="mt-1 flex items-center text-sm text-gray-500">
-                        <EnvelopeIcon className="flex-shrink-0 mr-1.5 h-4 w-4" />
-                        {debtor.email}
-                        <PhoneIcon className="flex-shrink-0 ml-4 mr-1.5 h-4 w-4" />
-                        {debtor.phone}
-                      </div>
-                      <div className="mt-1 flex items-center text-sm text-gray-500">
-                        <HomeIcon className="flex-shrink-0 mr-1.5 h-4 w-4" />
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 dark:text-white">{debtor.email}</div>
+                      {debtor.phone && (
+                        <div className="text-sm text-gray-500 dark:text-gray-400">{debtor.phone}</div>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm text-gray-900 dark:text-white">
                         {debtor.property_name || 'Propiedad no asignada'}
-                        <CurrencyDollarIcon className="flex-shrink-0 ml-4 mr-1.5 h-4 w-4" />
-                        S/ {debtor.monthly_rent.toFixed(2)}/mes
                       </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center space-x-2">
-                    {debtor.debt_amount > 0 && (
-                      <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
-                        Debe: S/ {debtor.debt_amount.toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        S/ {debtor.monthly_rent.toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(debtor.status)}`}>
+                        {getPaymentStatusText(debtor.status)}
                       </span>
-                    )}
-                    <button 
-                      onClick={() => handleView(debtor)}
-                      className="text-gray-400 hover:text-blue-500"
-                      title="Ver detalles"
-                    >
-                      <EyeIcon className="h-5 w-5" />
-                    </button>
-                    <button 
-                      onClick={() => handleEdit(debtor)}
-                      className="text-gray-400 hover:text-yellow-500"
-                      title="Editar"
-                    >
-                      <PencilIcon className="h-5 w-5" />
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(debtor.public_id)}
-                      className="text-gray-400 hover:text-red-500"
-                      title="Eliminar"
-                    >
-                      <TrashIcon className="h-5 w-5" />
-                    </button>
-                  </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
+                      <div className="text-sm font-medium text-gray-900 dark:text-white">
+                        S/ {debtor.debt_amount.toFixed(2)}
+                      </div>
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
+                      <div className="flex items-center justify-end space-x-2">
+                        <button
+                          onClick={() => handleViewDebtor(debtor)}
+                          className="text-gray-400 hover:text-blue-500 transition-colors"
+                          title="Ver detalles"
+                        >
+                          <EyeIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => handleEditDebtor(debtor)}
+                          className="text-gray-400 hover:text-yellow-500 transition-colors"
+                          title="Editar"
+                        >
+                          <PencilIcon className="h-5 w-5" />
+                        </button>
+                        <button
+                          onClick={() => handleDeleteDebtor(debtor)}
+                          className="text-gray-400 hover:text-red-500 transition-colors"
+                          title="Eliminar"
+                        >
+                          <TrashIcon className="h-5 w-5" />
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+
+        {/* Modals */}
+        <CreateDebtorModal
+          isOpen={isCreateModalOpen}
+          onClose={() => setIsCreateModalOpen(false)}
+          onDebtorCreated={handleCreateDebtor}
+          isCreating={isCreating}
+        />
+
+        {/* Delete Confirmation Modal */}
+        {showDeleteModal && selectedDebtor && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                    Confirmar eliminación
+                  </h3>
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <div className="mb-4">
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    ¿Estás seguro de que deseas eliminar al inquilino <strong>{selectedDebtor.full_name}</strong>?
+                  </p>
+                  <p className="text-sm text-red-600 dark:text-red-400 mt-2">
+                    Esta acción no se puede deshacer.
+                  </p>
+                </div>
+                <div className="flex justify-end space-x-3">
+                  <button
+                    onClick={() => setShowDeleteModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cancelar
+                  </button>
+                  <button
+                    onClick={confirmDelete}
+                    className="px-4 py-2 text-sm font-medium text-white bg-red-600 rounded-md hover:bg-red-700 transition-colors"
+                  >
+                    Eliminar
+                  </button>
                 </div>
               </div>
-            </li>
-          ))}
-        </ul>
+            </div>
+          </div>
+        )}
+
+        {/* View Modal */}
+        {showViewModal && selectedDebtor && (
+          <div className="fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+            <div className="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white dark:bg-gray-800">
+              <div className="mt-3">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-lg font-medium text-gray-900 dark:text-white">
+                    Detalles del Inquilino
+                  </h3>
+                  <button
+                    onClick={() => setShowViewModal(false)}
+                    className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300"
+                  >
+                    <XMarkIcon className="h-6 w-6" />
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Nombre</label>
+                    <p className="text-sm text-gray-900 dark:text-white">{selectedDebtor.full_name}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Email</label>
+                    <p className="text-sm text-gray-900 dark:text-white">{selectedDebtor.email}</p>
+                  </div>
+                  {selectedDebtor.phone && (
+                    <div>
+                      <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Teléfono</label>
+                      <p className="text-sm text-gray-900 dark:text-white">{selectedDebtor.phone}</p>
+                    </div>
+                  )}
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Propiedad</label>
+                    <p className="text-sm text-gray-900 dark:text-white">
+                      {selectedDebtor.property_name || 'Propiedad no asignada'}
+                    </p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Renta Mensual</label>
+                    <p className="text-sm text-gray-900 dark:text-white">S/ {selectedDebtor.monthly_rent.toFixed(2)}</p>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Estado</label>
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${getPaymentStatusColor(selectedDebtor.status)}`}>
+                      {getPaymentStatusText(selectedDebtor.status)}
+                    </span>
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium text-gray-500 dark:text-gray-400">Deuda Actual</label>
+                    <p className="text-sm text-gray-900 dark:text-white">S/ {selectedDebtor.debt_amount.toFixed(2)}</p>
+                  </div>
+                </div>
+                <div className="mt-6 flex justify-end">
+                  <button
+                    onClick={() => setShowViewModal(false)}
+                    className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 bg-gray-100 dark:bg-gray-700 rounded-md hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Edit Modal */}
+        {showEditModal && selectedDebtor && (
+          <EditDebtorModal
+            debtor={selectedDebtor}
+            isOpen={showEditModal}
+            onClose={() => {
+              setShowEditModal(false);
+              setSelectedDebtor(null);
+            }}
+            onUpdate={async () => {
+              await fetchDebtors();
+              setShowEditModal(false);
+              setSelectedDebtor(null);
+            }}
+          />
+        )}
       </div>
-
-      {filteredDebtors.length === 0 && (
-        <div className="text-center py-12">
-          <UserIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay inquilinos</h3>
-          <p className="mt-1 text-sm text-gray-500">
-            {searchTerm || statusFilter !== 'all' 
-              ? 'No se encontraron inquilinos con los filtros aplicados.'
-              : 'Comienza agregando tu primer inquilino.'
-            }
-          </p>
-        </div>
-      )}
-
-      {/* Edit Modal */}
-      <EditDebtorModal
-        isOpen={isEditModalOpen}
-        onClose={handleCloseEditModal}
-        debtor={editingDebtor}
-        onUpdate={handleUpdateDebtor}
-      />
-
-      {/* View Modal */}
-      <ViewDebtorModal
-        isOpen={isViewModalOpen}
-        onClose={handleCloseViewModal}
-        debtor={viewingDebtor}
-      />
     </div>
   );
 };

@@ -427,7 +427,7 @@ const EditLeaseModal: React.FC<EditLeaseModalProps> = ({
                       
                       return (
                         <label 
-                          key={`${method.id}-${isSelected}`} 
+                          key={method.id} 
                           className={`flex flex-col items-center cursor-pointer hover:bg-gray-100 dark:hover:bg-gray-700 p-1 rounded border-2 transition-colors ${
                             isSelected 
                                 ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/20' 

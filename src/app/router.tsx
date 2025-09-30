@@ -31,6 +31,7 @@ const PropertiesList = lazy(() => import('@/pages/PropertiesList'));
 const PropertyDetail = lazy(() => import('@/pages/PropertyDetail'));
 const PaymentSuccess = lazy(() => import('@/pages/PaymentSuccess'));
 const PaymentFailed = lazy(() => import('@/pages/PaymentFailed'));
+const Checkout = lazy(() => import('@/pages/Checkout'));
 const NotFound = lazy(() => import('@/pages/NotFound'));
 
 // Query client
@@ -145,6 +146,10 @@ export const router = createBrowserRouter([
         {
           path: 'explore',
           element: <ExploreRentals />,
+        },
+        {
+          path: 'checkout/:propertyId',
+          element: <Checkout />,
         },
         {
           path: 'bookings',

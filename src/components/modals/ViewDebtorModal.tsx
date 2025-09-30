@@ -23,7 +23,7 @@ interface Debtor {
   property_id: string;
   property_name?: string;
   monthly_rent: number;
-  status: 'active' | 'inactive' | 'pending';
+  status: 'sin_pagos' | 'al_dia' | 'pago_parcial' | 'vencido' | 'error';
   last_payment?: string;
   debt_amount: number;
   created_at: string;
