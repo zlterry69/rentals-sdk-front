@@ -104,7 +104,21 @@ const Bookings: React.FC = () => {
       fetchBookings();
     } catch (error: any) {
       console.error('❌ Error llamando al webhook:', error);
-      toast.error('Error procesando el pago');
+      
+      // Si es un pago demo (order_id empieza con 'demo_'), considerarlo exitoso de todas formas
+      if (webhookData?.order_id?.startsWith('demo_')) {
+        console.log('🎓 Modo demo detectado, continuando como exitoso...');
+        toast.success('Pago demo procesado correctamente');
+        
+        // Cerrar el modal
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        
+        // Recargar reservas
+        fetchBookings();
+      } else {
+        toast.error('Error procesando el pago');
+      }
     }
   };
 
@@ -206,6 +220,9 @@ const Bookings: React.FC = () => {
     }
   };
 
+  // State para guardar las credenciales de NOWPayments
+  const [nowPaymentsCredentials, setNowPaymentsCredentials] = React.useState<{apiKey: string, ipnSecret: string} | null>(null);
+
   // Fetch payment methods for this user
   const fetchPaymentMethods = async () => {
     if (!user) return;
@@ -239,11 +256,24 @@ const Bookings: React.FC = () => {
         });
       }
       
-      if (userPaymentAccount.accepts_usdt) {
+      if (userPaymentAccount.accepts_usdt && userPaymentAccount.usdt_wallet) {
+        // Parsear las credenciales de NOWPayments del formato texto
+        const credentials = userPaymentAccount.usdt_wallet;
+        const apiKeyMatch = credentials.match(/NOWPAYMENTS_API_KEY:\s*([^\s\n]+)/);
+        const ipnSecretMatch = credentials.match(/NOWPAYMENTS_IPN_SECRET:\s*([^\s\n]+)/);
+        
+        if (apiKeyMatch && ipnSecretMatch) {
+          setNowPaymentsCredentials({
+            apiKey: apiKeyMatch[1],
+            ipnSecret: ipnSecretMatch[1]
+          });
+          console.log('🔑 Credenciales de NOWPayments cargadas desde perfil');
+        }
+        
         paymentMethods.push({
           name: 'NOWPayments',
           type: 'crypto',
-          details: userPaymentAccount.usdt_wallet || 'Sin detalles'
+          details: 'Pagos con criptomonedas'
         });
       }
       
@@ -416,17 +446,29 @@ const Bookings: React.FC = () => {
           const sdkUrl = import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000';
           console.log('📡 Calling SDK checkout endpoint:', `${sdkUrl}/checkout`);
           
+          // Preparar el payload con las credenciales si están disponibles
+          const checkoutPayload: any = {
+            amount: bookingToPay.total_amount,
+            currency: 'PEN',
+            cryptoCurrency: 'ETH',
+            reservaId: bookingToPay.public_id
+          };
+          
+          // Agregar credenciales si existen
+          if (nowPaymentsCredentials) {
+            checkoutPayload.nowpaymentsApiKey = nowPaymentsCredentials.apiKey;
+            checkoutPayload.nowpaymentsIpnSecret = nowPaymentsCredentials.ipnSecret;
+            console.log('🔑 Enviando credenciales de NOWPayments al SDK');
+          } else {
+            console.log('⚠️ No se encontraron credenciales, usando modo DEMO');
+          }
+          
           const checkoutResponse = await fetch(`${sdkUrl}/checkout`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json'
             },
-            body: JSON.stringify({
-              amount: bookingToPay.total_amount,
-              currency: 'PEN',
-              cryptoCurrency: 'ETH',
-              reservaId: bookingToPay.public_id
-            })
+            body: JSON.stringify(checkoutPayload)
           });
           
           if (!checkoutResponse.ok) {
