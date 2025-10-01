@@ -404,18 +404,50 @@ const Bookings: React.FC = () => {
         return;
       }
       
-      // Si es NOWPayments, mostrar el iframe del simulador
+      // Si es NOWPayments, crear el pago primero
       if (method.name === 'NOWPayments') {
-        console.log('🚀 NOWPayments selected, showing simulator...');
+        console.log('🚀 NOWPayments selected, creating payment...');
         
-        // Cerrar el modal de pagos inmediatamente
-        setShowPaymentModal(false);
-        
-        // Mostrar el iframe del simulador directamente
-        const simulatorUrl = `${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-simulator.html?payment_id=DEMO_${Date.now()}&amount=${bookingToPay.total_amount}&currency=PEN&address=0x91fc9f23f82f9dddc5AC91116f1FEfAeDb1e4e55&crypto_amount=${(bookingToPay.total_amount * 0.00025).toFixed(8)}&crypto_currency=ETH&booking_id=${bookingToPay.public_id}`;
-        
-        setNowPaymentsUrl(simulatorUrl);
-        setShowNowPaymentsIframe(true);
+        try {
+          // Cerrar el modal de pagos
+          setShowPaymentModal(false);
+          
+          // Crear el pago en el SDK de NOWPayments
+          const sdkUrl = import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000';
+          console.log('📡 Calling SDK checkout endpoint:', `${sdkUrl}/checkout`);
+          
+          const checkoutResponse = await fetch(`${sdkUrl}/checkout`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              amount: bookingToPay.total_amount,
+              currency: 'PEN',
+              cryptoCurrency: 'ETH',
+              reservaId: bookingToPay.public_id
+            })
+          });
+          
+          if (!checkoutResponse.ok) {
+            throw new Error(`SDK checkout failed: ${checkoutResponse.status}`);
+          }
+          
+          const checkoutData = await checkoutResponse.json();
+          console.log('✅ Checkout response:', checkoutData);
+          
+          if (!checkoutData.success || !checkoutData.checkoutUrl) {
+            throw new Error('No checkout URL received from SDK');
+          }
+          
+          // Abrir el checkout URL en el iframe
+          setNowPaymentsUrl(checkoutData.checkoutUrl);
+          setShowNowPaymentsIframe(true);
+          
+        } catch (error) {
+          console.error('❌ Error creating NOWPayments checkout:', error);
+          toast.error('Error al crear el pago. Por favor intente de nuevo.');
+        }
         
         return; // Salir temprano, no procesar más
       }
