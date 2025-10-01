@@ -10,11 +10,24 @@ import {
   DocumentTextIcon,
   EyeIcon,
   ArrowDownTrayIcon,
-  PencilIcon
+  PencilIcon,
+  TrashIcon
 } from '@heroicons/react/24/outline';
 import { api } from '@/app/api';
 import { toast } from 'react-hot-toast';
 import RegisterPaymentModal from '@/components/modals/RegisterPaymentModal';
+
+interface PaymentDetails {
+  sdk_response?: any;
+  payer_name?: string;
+  payer_email?: string;
+  payer_phone?: string;
+  payment_method_code?: string;
+  payment_method_name?: string;
+  transaction_id?: string;
+  external_reference?: string;
+  comments?: string;
+}
 
 interface Payment {
   id: string;
@@ -32,10 +45,13 @@ interface Payment {
   receipt_url?: string;
   created_at: string;
   updated_at: string;
+  payment_details?: PaymentDetails[];
 }
 
 const Payments: React.FC = () => {
   const [payments, setPayments] = useState<Payment[]>([]);
+  const [myPayments, setMyPayments] = useState<Payment[]>([]);
+  const [tenantPayments, setTenantPayments] = useState<Payment[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [showRegisterModal, setShowRegisterModal] = useState(false);
@@ -45,9 +61,11 @@ const Payments: React.FC = () => {
   const [selectedDescription, setSelectedDescription] = useState<string>('');
   const [editingPayment, setEditingPayment] = useState<Payment | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<'my-payments' | 'tenant-payments'>('my-payments');
 
   // Helper functions for payment status
   const getStatusColor = (status: string) => {
+    if (!status) return 'text-gray-600 bg-gray-100';
     switch (status.toLowerCase()) {
       case 'paid':
       case 'approved':
@@ -64,6 +82,7 @@ const Payments: React.FC = () => {
   };
 
   const getStatusText = (status: string) => {
+    if (!status) return 'Desconocido';
     switch (status.toLowerCase()) {
       case 'paid':
       case 'approved':
@@ -79,7 +98,8 @@ const Payments: React.FC = () => {
     }
   };
 
-  const getPaymentMethodIcon = (method: string) => {
+  const getPaymentMethodIcon = (method: string | null | undefined) => {
+    if (!method) return '💳'; // Icono por defecto si method es null/undefined
     switch (method.toLowerCase()) {
       case 'yape':
         return '💳';
@@ -89,6 +109,12 @@ const Payments: React.FC = () => {
         return '💳';
       case 'mastercard':
         return '💳';
+      case 'card':
+      case 'izipay':
+        return '💳';
+      case 'crypto':
+      case 'nowpayments':
+        return '₿';
       case 'cash':
       case 'efectivo':
         return '💵';
@@ -105,6 +131,11 @@ const Payments: React.FC = () => {
   useEffect(() => {
     fetchPayments();
   }, []);
+
+  // Limpiar búsqueda cuando se cambia de pestaña
+  useEffect(() => {
+    setSearchTerm('');
+  }, [activeTab]);
 
   // Verificar pagos recientes cada 15 segundos
   useEffect(() => {
@@ -136,31 +167,97 @@ const Payments: React.FC = () => {
   const fetchPayments = async () => {
     try {
       setIsLoading(true);
-      const response = await api.get('/payments');
-      setPayments(response.data || []);
+      const response = await api.get('/payments/recent?limit=50');
+      const allPayments = response.data.payments || [];
+      setPayments(allPayments);
+      
+      // Separar pagos en dos categorías
+      const userResult = await api.get('/auth/me');
+      const currentUserId = userResult.data?.id;
+      
+      if (currentUserId) {
+        // Obtener las unidades que posee el usuario actual
+        const unitsResponse = await api.get('/units');
+        const ownedUnits = unitsResponse.data || [];
+        const ownedUnitIds = ownedUnits.map((unit: any) => unit.id);
+        
+        const myPaymentsList = allPayments.filter((payment: any) => {
+          // Es un pago que hizo el usuario si:
+          // 1. El debtor tiene el mismo email que el usuario actual
+          // 2. O si el payment tiene un debtor con owner_id igual al usuario actual (pago propio)
+          return payment.debtors?.email === userResult.data?.email || 
+                 payment.debtors?.owner_id === currentUserId;
+        });
+        
+        const tenantPaymentsList = allPayments.filter((payment: any) => {
+          // Es un pago de inquilino si:
+          // 1. El debtor.owner_id es igual al user_id actual (propietario)
+          // 2. Y el debtor.property_id está en las unidades que posee el usuario
+          // 3. Y NO es un pago que hizo el usuario (para evitar duplicados)
+          return payment.debtors?.owner_id === currentUserId && 
+                 ownedUnitIds.includes(payment.debtors?.property_id) &&
+                 payment.debtors?.email !== userResult.data?.email;
+        });
+        
+        setMyPayments(myPaymentsList);
+        setTenantPayments(tenantPaymentsList);
+      } else {
+        // Si no se puede obtener el user_id, mostrar todos en "Mis Pagos"
+        setMyPayments(allPayments);
+        setTenantPayments([]);
+      }
     } catch (error) {
       console.error('Error fetching payments:', error);
       toast.error('Error al cargar pagos');
       setPayments([]);
+      setMyPayments([]);
+      setTenantPayments([]);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const filteredPayments = payments.filter(payment => {
-    const matchesSearch = payment.debtor_name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         (payment.property_name && payment.property_name.toLowerCase().includes(searchTerm.toLowerCase()));
+  const getCurrentPayments = () => {
+    return activeTab === 'my-payments' ? myPayments : tenantPayments;
+  };
+
+  const filteredPayments = getCurrentPayments().filter(payment => {
+    if (!searchTerm) return true;
     
-    // Since we don't have status in the new interface, we'll show all payments
+    const searchLower = searchTerm.toLowerCase();
+    const matchesSearch = 
+      payment.debtor_name.toLowerCase().includes(searchLower) ||
+      (payment.property_name && payment.property_name.toLowerCase().includes(searchLower)) ||
+      payment.payment_method.toLowerCase().includes(searchLower) ||
+      payment.payment_origin.toLowerCase().includes(searchLower) ||
+      (payment.description && payment.description.toLowerCase().includes(searchLower)) ||
+      (payment.comments && payment.comments.toLowerCase().includes(searchLower)) ||
+      (payment.invoice_id && payment.invoice_id.toLowerCase().includes(searchLower));
+    
     return matchesSearch;
   });
 
-  const totalAmount = payments.reduce((sum, p) => sum + p.amount, 0);
-  const totalPayments = payments.length;
+  const totalAmount = getCurrentPayments().reduce((sum, p) => sum + p.amount, 0);
+  const totalPayments = getCurrentPayments().length;
 
   const handleViewDetails = (payment: Payment) => {
     setSelectedPayment(payment);
     setShowDetailsModal(true);
+  };
+
+  const handleDeletePayment = async (paymentId: string) => {
+    if (!window.confirm('¿Estás seguro de que quieres eliminar este pago? Esta acción no se puede deshacer.')) {
+      return;
+    }
+
+    try {
+      await api.delete(`/payments/${paymentId}`);
+      toast.success('Pago eliminado correctamente');
+      fetchPayments(); // Recargar la lista
+    } catch (error: any) {
+      console.error('Error deleting payment:', error);
+      toast.error(error.response?.data?.detail || 'Error al eliminar el pago');
+    }
   };
 
   const handleDownloadReceipt = async (payment: Payment) => {
@@ -299,6 +396,32 @@ const Payments: React.FC = () => {
         </div>
       </div>
 
+      {/* Tabs */}
+      <div className="border-b border-gray-200">
+        <nav className="-mb-px flex space-x-8">
+          <button
+            onClick={() => setActiveTab('my-payments')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'my-payments'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            💳 Mis Pagos ({myPayments.length})
+          </button>
+          <button
+            onClick={() => setActiveTab('tenant-payments')}
+            className={`py-2 px-1 border-b-2 font-medium text-sm ${
+              activeTab === 'tenant-payments'
+                ? 'border-blue-500 text-blue-600'
+                : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+            }`}
+          >
+            🏠 Pagos de Mis Inquilinos ({tenantPayments.length})
+          </button>
+        </nav>
+      </div>
+
       {/* Stats */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="bg-white overflow-hidden shadow rounded-lg">
@@ -373,7 +496,11 @@ const Payments: React.FC = () => {
               </div>
               <input
                 type="text"
-                placeholder="Buscar pagos por inquilino o propiedad..."
+                placeholder={
+                  activeTab === 'my-payments' 
+                    ? "Buscar mis pagos por descripción o método..." 
+                    : "Buscar pagos de inquilinos por nombre o propiedad..."
+                }
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
                 className="block w-full pl-10 pr-3 py-2 border border-gray-300 rounded-md leading-5 bg-white placeholder-gray-500 focus:outline-none focus:placeholder-gray-400 focus:ring-1 focus:ring-blue-500 focus:border-blue-500"
@@ -490,6 +617,13 @@ const Payments: React.FC = () => {
                           <ArrowDownTrayIcon className="h-5 w-5" />
                         </button>
                       )}
+                      <button 
+                        onClick={() => handleDeletePayment(payment.public_id)}
+                        className="text-gray-400 hover:text-red-500"
+                        title="Eliminar pago"
+                      >
+                        <TrashIcon className="h-5 w-5" />
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -502,11 +636,15 @@ const Payments: React.FC = () => {
       {filteredPayments.length === 0 && (
         <div className="text-center py-12">
           <CurrencyDollarIcon className="mx-auto h-12 w-12 text-gray-400" />
-          <h3 className="mt-2 text-sm font-medium text-gray-900">No hay pagos</h3>
+          <h3 className="mt-2 text-sm font-medium text-gray-900">
+            {activeTab === 'my-payments' ? 'No tienes pagos registrados' : 'No hay pagos de inquilinos'}
+          </h3>
           <p className="mt-1 text-sm text-gray-500">
             {searchTerm 
               ? 'No se encontraron pagos con los filtros aplicados.'
-              : 'Los pagos aparecerán aquí cuando se registren.'
+              : activeTab === 'my-payments' 
+                ? 'Tus pagos aparecerán aquí cuando los realices.'
+                : 'Los pagos de tus inquilinos aparecerán aquí cuando los realicen.'
             }
           </p>
         </div>
@@ -616,14 +754,16 @@ const Payments: React.FC = () => {
                   <h4 className="text-md font-medium text-gray-900 mb-3">Respuesta del SDK</h4>
                   <div className="bg-white p-3 rounded border">
                     <pre className="text-xs text-gray-600 whitespace-pre-wrap">
-                      {JSON.stringify({
-                        status: selectedPayment.status,
-                        method: selectedPayment.payment_method,
-                        amount: selectedPayment.amount,
-                        date: selectedPayment.payment_date,
-                        reference: selectedPayment.public_id,
-                        comments: selectedPayment.comments || 'Sin comentarios'
-                      }, null, 2)}
+                      {selectedPayment.payment_details && selectedPayment.payment_details.length > 0 && selectedPayment.payment_details[0].sdk_response
+                        ? JSON.stringify(selectedPayment.payment_details[0].sdk_response, null, 2)
+                        : JSON.stringify({
+                            status: selectedPayment.status,
+                            method: selectedPayment.payment_method,
+                            amount: selectedPayment.amount,
+                            date: selectedPayment.payment_date,
+                            reference: selectedPayment.public_id,
+                            comments: selectedPayment.comments || 'Sin comentarios'
+                          }, null, 2)}
                     </pre>
                   </div>
                 </div>
