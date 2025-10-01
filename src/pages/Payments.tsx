@@ -176,26 +176,17 @@ const Payments: React.FC = () => {
       const currentUserId = userResult.data?.id;
       
       if (currentUserId) {
-        // Obtener las unidades que posee el usuario actual
-        const unitsResponse = await api.get('/units');
-        const ownedUnits = unitsResponse.data || [];
-        const ownedUnitIds = ownedUnits.map((unit: any) => unit.id);
-        
         const myPaymentsList = allPayments.filter((payment: any) => {
           // Es un pago que hizo el usuario si:
           // 1. El debtor tiene el mismo email que el usuario actual
-          // 2. O si el payment tiene un debtor con owner_id igual al usuario actual (pago propio)
-          return payment.debtors?.email === userResult.data?.email || 
-                 payment.debtors?.owner_id === currentUserId;
+          return payment.debtors?.email === userResult.data?.email;
         });
         
         const tenantPaymentsList = allPayments.filter((payment: any) => {
           // Es un pago de inquilino si:
           // 1. El debtor.owner_id es igual al user_id actual (propietario)
-          // 2. Y el debtor.property_id está en las unidades que posee el usuario
-          // 3. Y NO es un pago que hizo el usuario (para evitar duplicados)
+          // 2. Y NO es un pago que hizo el usuario mismo (para evitar duplicados)
           return payment.debtors?.owner_id === currentUserId && 
-                 ownedUnitIds.includes(payment.debtors?.property_id) &&
                  payment.debtors?.email !== userResult.data?.email;
         });
         
