@@ -9,11 +9,11 @@ export const LOCAL_URLS = {
   SDK: 'http://localhost:5000',
 } as const;
 
-// URLs base para producción (configurar según tu dominio)
+// URLs base para producción (AWS Lambda)
 export const PRODUCTION_URLS = {
-  FRONTEND: 'https://tu-frontend.vercel.app',
-  BACKEND: 'https://tu-backend.vercel.app',
-  SDK: 'https://tu-sdk.vercel.app',
+  FRONTEND: 'https://rentals-sdk-front-git-front-local-terry-tejadas-projects.vercel.app',
+  BACKEND: 'https://api.rentals-backend.com',
+  SDK: 'https://api.sdk-nowpayments.com',
 } as const;
 
 // Detectar entorno
