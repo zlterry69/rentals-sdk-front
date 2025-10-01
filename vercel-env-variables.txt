@@ -1,0 +1,39 @@
+# Variables de Entorno para Vercel - HogarPeru Rentals Frontend
+# ================================================================
+
+# URLs de API (OBLIGATORIAS)
+VITE_API_BASE_URL=https://r3k8sn86cl.execute-api.us-east-1.amazonaws.com/Prod
+VITE_PAYMENTS_API_BASE_URL=https://gxloif6egd.execute-api.us-east-1.amazonaws.com/Prod
+
+# Configuración de la Aplicación
+VITE_APP_NAME=HogarPeru
+VITE_APP_VERSION=1.0.0
+
+# Configuración de S3 (para imágenes y documentos)
+VITE_S3_BUCKET_URL=https://hogar-peru-bucket.s3.amazonaws.com
+VITE_S3_REGION=us-east-1
+
+# Configuración de Supabase (si se usa en el frontend)
+VITE_SUPABASE_URL=https://auwboqgfgmqmuqsguiaa.supabase.co
+VITE_SUPABASE_ANON_KEY=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1d2JvcWZnZm1xbXVxc2d1aWFhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MzU2MjQ4MDAsImV4cCI6MjA1MTIwMDgwMH0.Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8Ej8
+
+# Configuración de NOWPayments (si se usa en el frontend)
+VITE_NOWPAYMENTS_API_KEY=YOUR_NOWPAYMENTS_API_KEY
+VITE_NOWPAYMENTS_IPN_SECRET=YOUR_NOWPAYMENTS_IPN_SECRET
+
+# Configuración de Entorno
+VITE_NODE_ENV=production
+VITE_VERCEL=true
+
+# URLs de Desarrollo (para referencia, no usar en producción)
+# VITE_DEV_API_BASE_URL=http://localhost:8000
+# VITE_DEV_PAYMENTS_API_BASE_URL=http://localhost:5000
+
+# ================================================================
+# INSTRUCCIONES:
+# 1. Copia estas variables a Vercel
+# 2. Reemplaza YOUR_NOWPAYMENTS_API_KEY con tu clave real
+# 3. Reemplaza YOUR_NOWPAYMENTS_IPN_SECRET con tu secreto real
+# 4. Reemplaza la VITE_SUPABASE_ANON_KEY con tu clave real de Supabase
+# 5. Guarda y redeploya
+# ================================================================

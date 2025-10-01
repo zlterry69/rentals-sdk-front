@@ -16,9 +16,9 @@ export const PRODUCTION_URLS = {
   SDK: 'https://gxloif6egd.execute-api.us-east-1.amazonaws.com/Prod',
 } as const;
 
-// Detectar entorno
-const isDevelopment = import.meta.env.DEV;
-const isProduction = import.meta.env.PROD;
+// Detectar entorno - Forzar producción en Vercel
+const isDevelopment = import.meta.env.DEV && !window.location.hostname.includes('vercel.app');
+const isProduction = import.meta.env.PROD || window.location.hostname.includes('vercel.app');
 
 // URLs activas según el entorno
 export const ACTIVE_URLS = isDevelopment ? LOCAL_URLS : PRODUCTION_URLS;

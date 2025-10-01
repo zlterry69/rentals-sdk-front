@@ -46,6 +46,9 @@ const Bookings: React.FC = () => {
   const [bookingToDelete, setBookingToDelete] = useState<Booking | null>(null);
   const [showPaymentModal, setShowPaymentModal] = useState(false);
   const [bookingToPay, setBookingToPay] = useState<Booking | null>(null);
+  const [paymentMethods, setPaymentMethods] = useState<any>(null);
+  const [showNowPaymentsIframe, setShowNowPaymentsIframe] = useState(false);
+  const [nowPaymentsUrl, setNowPaymentsUrl] = useState('');
   
   // Estados para paginación
   const [currentPage, setCurrentPage] = useState(1);
@@ -55,7 +58,55 @@ const Bookings: React.FC = () => {
 
   useEffect(() => {
     fetchBookings();
+    fetchPaymentMethods();
   }, [currentPage, filter, activeTab]);
+
+  // Listener para cerrar modal automáticamente cuando el pago sea exitoso o se agote el tiempo
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PAYMENT_SUCCESS' && event.data?.action === 'close_modal') {
+        console.log('🎉 Pago exitoso detectado, cerrando modal...');
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        // Recargar bookings para ver el estado actualizado
+        fetchBookings();
+        toast.success('¡Pago completado exitosamente!');
+      } else if (event.data?.type === 'PAYMENT_TIMEOUT' && event.data?.action === 'close_modal') {
+        console.log('⏰ Tiempo agotado, cerrando modal...');
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        // Recargar bookings para ver el estado actualizado
+        fetchBookings();
+        toast.error('Tiempo agotado. La reserva ha sido cancelada.');
+      } else if (event.data?.type === 'PAYMENT_WEBHOOK_DATA') {
+        console.log('📤 Recibiendo datos de webhook del simulador:', event.data.data);
+        handleWebhookCall(event.data.data);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+  // Función para llamar al webhook desde el frontend
+  const handleWebhookCall = async (webhookData: any) => {
+    try {
+      console.log('🌐 Llamando al webhook desde el frontend...');
+      const response = await api.post('/webhooks/nowpayments', webhookData);
+      console.log('✅ Webhook procesado correctamente:', response.data);
+      toast.success('Pago procesado correctamente');
+      
+      // Cerrar el modal después del webhook exitoso
+      setShowNowPaymentsIframe(false);
+      setNowPaymentsUrl('');
+      
+      // Recargar reservas
+      fetchBookings();
+    } catch (error: any) {
+      console.error('❌ Error llamando al webhook:', error);
+      toast.error('Error procesando el pago');
+    }
+  };
 
   // Verificar estado de reservas pendientes cada 10 segundos
   useEffect(() => {
@@ -116,18 +167,14 @@ const Bookings: React.FC = () => {
       const endpoint = activeTab === 'my-bookings' ? '/bookings/my-bookings' : '/bookings/received';
       const response = await api.get(`${endpoint}?${params.toString()}`);
       
-      // Debug: Log the response structure
+      // Debug: Log the response structure (simplified)
       console.log('Bookings API Response:', {
         endpoint,
         status: response.status,
-        dataType: typeof response.data,
-        hasBookings: 'bookings' in (response.data || {}),
-        hasData: 'data' in (response.data || {}),
-        isArray: Array.isArray(response.data),
-        data: response.data
+        bookingsCount: response.data?.bookings?.length || 0
       });
       
-      // Si la API devuelve datos paginados (estructura con 'bookings' y 'pagination')
+      // El backend ya devuelve los bookings ordenados por created_at desc y paginados
       if (response.data && typeof response.data === 'object' && 'bookings' in response.data) {
         // Mapear los datos del backend al formato esperado por el frontend
         const mappedBookings = (response.data.bookings || []).map((booking: any) => ({
@@ -142,53 +189,11 @@ const Bookings: React.FC = () => {
         setBookings(mappedBookings);
         setTotalBookings(response.data.pagination?.total || 0);
         setTotalPages(Math.ceil((response.data.pagination?.total || 0) / bookingsPerPage));
-      } 
-      // Si la API devuelve datos paginados (estructura con 'data' y 'total')
-      else if (response.data && typeof response.data === 'object' && 'data' in response.data) {
-        // Mapear los datos del backend al formato esperado por el frontend
-        const mappedBookings = (response.data.data || []).map((booking: any) => ({
-          ...booking,
-          unit_title: booking.units?.title || 'Sin título',
-          unit_images: booking.units?.images || [],
-          guest_name: booking.users?.full_name || 'Sin nombre',
-          status: booking.process_status?.code || 'PENDING',
-          status_description: booking.process_status?.description || 'Sin descripción'
-        }));
-        
-        setBookings(mappedBookings);
-        setTotalBookings(response.data.total || 0);
-        setTotalPages(response.data.total_pages || 1);
-      } 
-      // Si la API devuelve un array simple, lo paginamos en el frontend
-      else {
-        const allBookings = response.data || [];
-        
-        // Validar que allBookings sea un array
-        if (!Array.isArray(allBookings)) {
-          console.error('Expected array but got:', typeof allBookings, allBookings);
-          setBookings([]);
-          setTotalBookings(0);
-          setTotalPages(1);
-          return;
-        }
-        
-        setTotalBookings(allBookings.length);
-        setTotalPages(Math.ceil(allBookings.length / bookingsPerPage));
-        
-        // Mapear los datos del backend al formato esperado por el frontend
-        const mappedBookings = allBookings.map((booking: any) => ({
-          ...booking,
-          unit_title: booking.units?.title || 'Sin título',
-          unit_images: booking.units?.images || [],
-          guest_name: booking.users?.full_name || 'Sin nombre',
-          status: booking.process_status?.code || 'PENDING',
-          status_description: booking.process_status?.description || 'Sin descripción'
-        }));
-        
-        // Aplicar paginación en el frontend
-        const startIndex = (currentPage - 1) * bookingsPerPage;
-        const endIndex = startIndex + bookingsPerPage;
-        setBookings(mappedBookings.slice(startIndex, endIndex));
+      } else {
+        console.error('Unexpected response format:', response.data);
+        setBookings([]);
+        setTotalBookings(0);
+        setTotalPages(1);
       }
     } catch (error) {
       console.error('Error fetching bookings:', error);
@@ -198,6 +203,53 @@ const Bookings: React.FC = () => {
       setTotalPages(1);
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  // Fetch payment methods for this user
+  const fetchPaymentMethods = async () => {
+    if (!user) return;
+    
+    try {
+      const response = await api.get('/payment-accounts/');
+      const userPaymentAccount = response.data;
+      const paymentMethods = [];
+      
+      if (userPaymentAccount.accepts_ethereum) {
+        paymentMethods.push({
+          name: 'Ethereum',
+          type: 'crypto',
+          details: userPaymentAccount.ethereum_wallet || 'Sin detalles'
+        });
+      }
+      
+      if (userPaymentAccount.accepts_yape) {
+        paymentMethods.push({
+          name: 'Yape',
+          type: 'traditional',
+          details: userPaymentAccount.yape_number || 'Sin detalles'
+        });
+      }
+      
+      if (userPaymentAccount.accepts_plin) {
+        paymentMethods.push({
+          name: 'Plin',
+          type: 'traditional',
+          details: userPaymentAccount.plin_number || 'Sin detalles'
+        });
+      }
+      
+      if (userPaymentAccount.accepts_usdt) {
+        paymentMethods.push({
+          name: 'NOWPayments',
+          type: 'crypto',
+          details: userPaymentAccount.usdt_wallet || 'Sin detalles'
+        });
+      }
+      
+      setPaymentMethods(paymentMethods);
+    } catch (error) {
+      console.error('Error fetching payment methods:', error);
     }
   };
 
@@ -287,13 +339,16 @@ const Bookings: React.FC = () => {
       if (method.code === 'izipay' || method.name?.toLowerCase() === 'izipay') {
         toast.success('Redirigiendo a Izipay...');
         
+        // Guardar la URL de retorno para después del pago
+        localStorage.setItem('izipay_return_url', window.location.pathname);
+        
         // Crear los datos de la sesión de pago con la información real de la reserva
         const paymentData = {
           product_id: bookingToPay.public_id,
           amount: Math.round(bookingToPay.total_amount * 100), // Convertir a centavos
           currency: 'PEN',
           description: `Pago de reserva ${bookingToPay.public_id}`,
-          return_url: `${window.location.origin}/payment/success`
+          return_url: `${window.location.origin}/payment/success?orderId=${bookingToPay.public_id}&amount=${bookingToPay.total_amount}&status=SUCCEEDED`
         };
 
         // Hacer POST al endpoint de Izipay con los datos reales
@@ -349,79 +404,20 @@ const Bookings: React.FC = () => {
         return;
       }
       
-      // Si es NOWPayments, usar el SDK
+      // Si es NOWPayments, mostrar el iframe del simulador
       if (method.name === 'NOWPayments') {
-        console.log('🚀 NOWPayments selected in Bookings, calling SDK...');
+        console.log('🚀 NOWPayments selected, showing simulator...');
         
         // Cerrar el modal de pagos inmediatamente
         setShowPaymentModal(false);
         
-        // Llamar al SDK de NOWPayments
-        console.log('📤 Sending request to SDK with booking data:', {
-          amount: bookingToPay.total_amount,
-          currency: 'PEN',
-          cryptoCurrency: 'ETH',
-          reservaId: bookingToPay.public_id
-        });
+        // Mostrar el iframe del simulador directamente
+        const simulatorUrl = `${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-simulator.html?payment_id=DEMO_${Date.now()}&amount=${bookingToPay.total_amount}&currency=PEN&address=0x91fc9f23f82f9dddc5AC91116f1FEfAeDb1e4e55&crypto_amount=${(bookingToPay.total_amount * 0.00025).toFixed(8)}&crypto_currency=ETH&booking_id=${bookingToPay.public_id}`;
         
-        const response = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/checkout`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            amount: bookingToPay.total_amount,
-            currency: 'PEN',
-            cryptoCurrency: 'ETH', // Por defecto ETH, después se puede hacer dinámico
-            reservaId: bookingToPay.public_id
-          })
-        });
-
-        console.log('📥 SDK response status:', response.status);
-        const paymentData = await response.json();
-        console.log('📥 SDK response data:', paymentData);
-
-        if (paymentData.success) {
-          // Abrir ventana de pago de NOWPayments
-          const paymentWindow = window.open(
-            paymentData.checkoutUrl,
-            'nowpayments',
-            'width=800,height=600,scrollbars=yes,resizable=yes'
-          );
-
-          // Monitorear el estado del pago
-          if (paymentWindow) {
-            const checkPaymentStatus = setInterval(async () => {
-              try {
-                const statusResponse = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-status/${paymentData.paymentId}`);
-                const statusData = await statusResponse.json();
-                
-                if (statusData.payment_status === 'finished') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  setShowPaymentModal(false);
-                  setBookingToPay(null);
-                  toast.success('¡Pago completado exitosamente!');
-                  fetchBookings(); // Recargar las reservas
-                } else if (statusData.payment_status === 'failed') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  toast.error('El pago falló. Por favor intenta nuevamente.');
-                }
-              } catch (error) {
-                console.error('Error verificando estado del pago:', error);
-              }
-            }, 5000); // Verificar cada 5 segundos
-
-            // Limpiar el intervalo si la ventana se cierra
-            paymentWindow.addEventListener('beforeunload', () => {
-              clearInterval(checkPaymentStatus);
-            });
-          }
-        } else {
-          toast.error('Error al crear el pago con NOWPayments. Por favor intenta nuevamente.');
-        }
-        return;
+        setNowPaymentsUrl(simulatorUrl);
+        setShowNowPaymentsIframe(true);
+        
+        return; // Salir temprano, no procesar más
       }
 
       // Para otros métodos de pago, usar la lógica original
@@ -463,7 +459,6 @@ const Bookings: React.FC = () => {
   };
 
   const getStatusColor = (status: string) => {
-    console.log('Estado recibido para color:', status, 'tipo:', typeof status);
     switch (status) {
       // Estados en inglés (códigos)
       case 'CONFIRMED':
@@ -759,6 +754,14 @@ const Bookings: React.FC = () => {
                               <XCircleIcon className="h-4 w-4" />
                             </button>
                           )}
+                          {/* Botón de borrar reserva */}
+                          <button 
+                            onClick={() => handleDeleteBooking(booking)}
+                            className="p-1 text-red-600 hover:text-red-500 dark:text-red-400 dark:hover:text-red-300"
+                            title="Eliminar reserva"
+                          >
+                            <TrashIcon className="h-4 w-4" />
+                          </button>
                         </>
                       )}
                       
@@ -1300,6 +1303,38 @@ const Bookings: React.FC = () => {
           onPaymentMethodSelect={handlePaymentMethodSelect}
           onPayLater={handlePayLater}
         />
+      )}
+
+      {/* Modal para iframe de NOWPayments */}
+      {showNowPaymentsIframe && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl h-auto flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Pago con Criptomonedas</h3>
+              <button
+                onClick={() => {
+                  setShowNowPaymentsIframe(false);
+                  setNowPaymentsUrl('');
+                  // Recargar bookings para ver el estado actualizado
+                  fetchBookings();
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="w-full h-[600px]">
+              <iframe
+                src={nowPaymentsUrl}
+                className="w-full h-full border-0 rounded-lg"
+                title="Simulador de Pago NOWPayments"
+                allow="payment"
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -101,6 +101,8 @@ const PropertyDetail: React.FC = () => {
   const [editFormData, setEditFormData] = useState<any>({});
   const [isSaving, setIsSaving] = useState(false);
   const [paymentMethods, setPaymentMethods] = useState<any>(null);
+  const [showNowPaymentsIframe, setShowNowPaymentsIframe] = useState(false);
+  const [nowPaymentsUrl, setNowPaymentsUrl] = useState('');
   const [hasChanges, setHasChanges] = useState(false);
   const [pendingImages, setPendingImages] = useState<{file: File, index: number}[]>([]);
   
@@ -131,6 +133,53 @@ const PropertyDetail: React.FC = () => {
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number }>({ lat: -12.0464, lng: -77.0428 });
   const [selectedLocation, setSelectedLocation] = useState<{ lat: number; lng: number; address: string } | null>(null);
   const [displayAddress, setDisplayAddress] = useState<string>('Dirección por definir');
+
+  // Listener para cerrar modal automáticamente cuando el pago sea exitoso o se agote el tiempo
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PAYMENT_SUCCESS' && event.data?.action === 'close_modal') {
+        console.log('🎉 Pago exitoso detectado, cerrando modal...');
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        // Recargar la página para ver el estado actualizado
+        window.location.reload();
+        toast.success('¡Pago completado exitosamente!');
+      } else if (event.data?.type === 'PAYMENT_TIMEOUT' && event.data?.action === 'close_modal') {
+        console.log('⏰ Tiempo agotado, cerrando modal...');
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        // Recargar la página para ver el estado actualizado
+        window.location.reload();
+        toast.error('Tiempo agotado. La reserva ha sido cancelada.');
+      } else if (event.data?.type === 'PAYMENT_WEBHOOK_DATA') {
+        console.log('📤 Recibiendo datos de webhook del simulador:', event.data.data);
+        handleWebhookCall(event.data.data);
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
+
+    // Función para llamar al webhook desde el frontend
+    const handleWebhookCall = async (webhookData: any) => {
+      try {
+        console.log('🌐 Llamando al webhook desde el frontend...');
+        const response = await api.post('/webhooks/nowpayments', webhookData);
+        console.log('✅ Webhook procesado correctamente:', response.data);
+        toast.success('Pago procesado correctamente');
+        
+        // Cerrar el modal después del webhook exitoso
+        setShowNowPaymentsIframe(false);
+        setNowPaymentsUrl('');
+        
+        // Recargar la página para ver el estado actualizado
+        window.location.reload();
+      } catch (error: any) {
+        console.error('❌ Error llamando al webhook:', error);
+        toast.error('Error procesando el pago');
+      }
+    };
 
   // Fetch property from backend
   useEffect(() => {
@@ -745,78 +794,105 @@ const PropertyDetail: React.FC = () => {
   const handlePaymentMethodSelect = async (method: any) => {
     console.log('🔍 handlePaymentMethodSelect called with method:', method);
     try {
-      // Si es NOWPayments, usar el SDK
+      // Si es NOWPayments, mostrar el iframe del simulador
       if (method.name === 'NOWPayments') {
-        console.log('🚀 NOWPayments selected, calling SDK...');
+        console.log('🚀 NOWPayments selected, showing simulator...');
         const totalAmount = calculateTotal() + 40;
         
         // Cerrar el modal de reserva inmediatamente
         setShowBookingModal(false);
         
-        // Llamar al SDK de NOWPayments
-        console.log('📤 Sending request to SDK with data:', {
-          amount: totalAmount,
-          currency: 'PEN',
-          cryptoCurrency: 'ETH',
-          reservaId: `CASA-${Date.now()}`
-        });
+        // Mostrar el iframe del simulador directamente
+        const simulatorUrl = `${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-simulator.html?payment_id=DEMO_${Date.now()}&amount=${totalAmount}&currency=PEN&address=0x91fc9f23f82f9dddc5AC91116f1FEfAeDb1e4e55&crypto_amount=${(totalAmount * 0.00025).toFixed(8)}&crypto_currency=ETH&booking_id=bkg_${Date.now()}`;
         
-               const response = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/checkout`, {
-                 method: 'POST',
-                 headers: {
-                   'Content-Type': 'application/json'
-                 },
-                 body: JSON.stringify({
-                   amount: totalAmount,
-                   currency: 'PEN',
-                   cryptoCurrency: 'ETH', // Por defecto ETH, después se puede hacer dinámico
-                   reservaId: property?.public_id || `CASA-${Date.now()}`
-                 })
-               });
+        setNowPaymentsUrl(simulatorUrl);
+        setShowNowPaymentsIframe(true);
+        
+        return; // Salir temprano, no procesar más
+      }
 
-        console.log('📥 SDK response status:', response.status);
-        const paymentData = await response.json();
-        console.log('📥 SDK response data:', paymentData);
+      // Si es iZIPay, manejar específicamente
+      if (method.code === 'izipay' || method.name?.toLowerCase() === 'izipay') {
+        toast.success('Creando reserva y redirigiendo a iZIPay...');
+        
+        // Guardar la URL de retorno para después del pago
+        localStorage.setItem('izipay_return_url', window.location.pathname);
+        
+        const totalAmount = calculateTotal() + 40;
+        
+        try {
+          // PRIMERO: Crear la reserva en la base de datos
+          const bookingData = {
+            unit_id: property?.id,
+            check_in: checkIn,
+            check_out: checkOut,
+            guests: guests,
+            total_amount: totalAmount,
+            payment_method: 'izipay',
+            payment_status: 'PENDING'
+          };
 
-        if (paymentData.success) {
-          // Abrir ventana de pago de NOWPayments
-          const paymentWindow = window.open(
-            paymentData.checkoutUrl,
-            'nowpayments',
-            'width=800,height=600,scrollbars=yes,resizable=yes'
-          );
+          console.log('📝 Creando reserva:', bookingData);
+          
+          const bookingResponse = await api.post('/bookings', bookingData);
+          const booking = bookingResponse.data;
+          
+          console.log('✅ Reserva creada:', booking);
+          
+          // Cerrar el modal de reserva
+          setShowBookingModal(false);
+          
+          // SEGUNDO: Usar el public_id real para el pago con iZIPay
+          const paymentData = {
+            product_id: booking.public_id, // Usar el public_id real de la reserva
+            amount: Math.round(totalAmount * 100), // Convertir a centavos
+            currency: 'PEN',
+            description: `Pago de reserva ${booking.public_id}`,
+            return_url: `${window.location.origin}/payment/success?orderId=${booking.public_id}&amount=${totalAmount}&status=SUCCEEDED`
+          };
 
-          // Monitorear el estado del pago
-          if (paymentWindow) {
-            const checkPaymentStatus = setInterval(async () => {
-              try {
-                const statusResponse = await fetch(`${import.meta.env.VITE_PAYMENTS_API_BASE_URL || 'http://localhost:5000'}/payment-status/${paymentData.paymentId}`);
-                const statusData = await statusResponse.json();
-                
-                if (statusData.payment_status === 'finished') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  setShowBookingModal(false);
-                  alert('¡Pago completado exitosamente!');
-                } else if (statusData.payment_status === 'failed') {
-                  clearInterval(checkPaymentStatus);
-                  paymentWindow.close();
-                  alert('El pago falló. Por favor intenta nuevamente.');
-                }
-              } catch (error) {
-                console.error('Error verificando estado del pago:', error);
-              }
-            }, 5000); // Verificar cada 5 segundos
+          console.log('💳 Datos de pago para iZIPay:', paymentData);
 
-            // Limpiar el intervalo si la ventana se cierra
-            paymentWindow.addEventListener('beforeunload', () => {
-              clearInterval(checkPaymentStatus);
-            });
+          // TERCERO: Hacer POST al endpoint de iZIPay con los datos reales
+          const response = await fetch('https://izipay-backend.onrender.com/api/payments/session', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${localStorage.getItem('token')}`
+            },
+            body: JSON.stringify(paymentData)
+          });
+
+          if (response.ok) {
+            const data = await response.json();
+            
+            // Si el backend devuelve el flujo antiguo (redirect simple)
+            if (data.redirect_url) {
+              window.location.href = data.redirect_url;
+            } 
+            // Si el backend devuelve el flujo nuevo (iframe)
+            else if (data.checkout_url) {
+              window.location.href = data.checkout_url;
+            } 
+            // Si el backend devuelve datos de pago directos
+            else if (data.payment_url) {
+              window.location.href = data.payment_url;
+            } else {
+              console.error('❌ No se encontró URL de pago en la respuesta:', data);
+              toast.error('Error: No se pudo obtener la URL de pago');
+            }
+          } else {
+            const errorData = await response.json();
+            console.error('❌ Error en la respuesta de iZIPay:', errorData);
+            toast.error(`Error: ${errorData.message || 'No se pudo procesar el pago'}`);
           }
-        } else {
-          alert('Error al crear el pago con NOWPayments. Por favor intenta nuevamente.');
+          
+        } catch (bookingError) {
+          console.error('❌ Error creando reserva:', bookingError);
+          toast.error('Error al crear la reserva. Intenta nuevamente.');
         }
-        return;
+        
+        return; // Salir temprano, no procesar más
       }
 
       // Para otros métodos de pago, usar la lógica original
@@ -2150,6 +2226,38 @@ const PropertyDetail: React.FC = () => {
             setShowLoginModal(true);
           }}
         />
+
+      {/* Modal para iframe de NOWPayments */}
+      {showNowPaymentsIframe && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 w-full max-w-2xl h-auto flex flex-col">
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold">Pago con Criptomonedas</h3>
+              <button
+                onClick={() => {
+                  setShowNowPaymentsIframe(false);
+                  setNowPaymentsUrl('');
+                  // Recargar la página para ver el estado actualizado
+                  window.location.reload();
+                }}
+                className="text-gray-500 hover:text-gray-700"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+            <div className="w-full h-[600px]">
+              <iframe
+                src={nowPaymentsUrl}
+                className="w-full h-full border-0 rounded-lg"
+                title="Simulador de Pago NOWPayments"
+                allow="payment"
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
     </>
   );
