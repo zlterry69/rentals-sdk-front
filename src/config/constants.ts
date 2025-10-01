@@ -11,7 +11,7 @@ export const LOCAL_URLS = {
 
 // URLs base para producción (AWS Lambda)
 export const PRODUCTION_URLS = {
-  FRONTEND: 'https://rentals-sdk-front-git-front-local-terry-tejadas-projects.vercel.app',
+  FRONTEND: 'https://rentals-sdk-front.vercel.app',
   BACKEND: 'https://r3k8sn86cl.execute-api.us-east-1.amazonaws.com/Prod',
   SDK: 'https://gxloif6egd.execute-api.us-east-1.amazonaws.com/Prod',
 } as const;
